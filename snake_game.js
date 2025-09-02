@@ -1,5 +1,6 @@
 (() => {
-  const playerId = crypto.randomUUID(); // uniek ID voor deze speler
+  // const playerId = crypto.randomUUID(); // uniek ID voor deze speler
+  const playerId = 'player_' + Math.random().toString(36).substr(2, 9);
   const canvas = document.getElementById("game");
 
   const ctx = canvas.getContext("2d");
