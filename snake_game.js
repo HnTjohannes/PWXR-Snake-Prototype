@@ -94,7 +94,7 @@
   const uiLen = document.getElementById("len");
 
   // --- WebSocket multiplayer ---
-  const ws = new WebSocket("ws://192.168.5.50:8080");
+  const ws = new WebSocket("ws://192.168.5.21:8080");
 
   let otherScores = {}; // scores van andere spelers
 
