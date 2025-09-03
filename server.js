@@ -2,11 +2,11 @@
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
 
-let players = {}; // { playerId: {score, name} }
+let players = {}; // { playerId: {score, name, x, y} }
 
 wss.on('connection', (ws) => {
   const playerId = Date.now() + Math.random(); // eenvoudige unieke id
-  players[playerId] = { score: 0, name: "Player" + playerId.toString().slice(-4) };
+  players[playerId] = { score: 0, name: "Player" + playerId.toString().slice(-4), x: 400, y: 300};
 
   // Stuur alle huidige scores naar nieuwe speler
   ws.send(JSON.stringify({ type: 'allScores', data: players }));
@@ -14,7 +14,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     const msg = JSON.parse(message);
 
-    if (msg.type === 'updateScore') {
+    if (msg.type === 'updateScore') { // moet dit wrs aanpassen
       players[playerId].score = msg.score;
 
       // Broadcast scores naar alle verbonden clients
@@ -23,15 +23,30 @@ wss.on('connection', (ws) => {
         if (client.readyState === WebSocket.OPEN) client.send(update);
       });
     }
+
+    if (msg.type === 'updateState'){
+      players[playerId].score = msg.score;
+      players[playerId].x = msg.x;
+      players[playerId].y = msg.y;
+    }
   });
 
   ws.on('close', () => {
     delete players[playerId];
-    const update = JSON.stringify({ type: 'allScores', data: players });
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) client.send(update);
-    });
+   // const update = JSON.stringify({ type: 'allScores', data: players });
+   // wss.clients.forEach(client => {
+    //  if (client.readyState === WebSocket.OPEN) client.send(update);
+    //});
   });
 });
+
+setInterval(() =>{
+  const update = JSON.stringify({ type: 'playerStates', data: players});
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(update);
+    }
+  })
+, 50})
 
 console.log("WebSocket server draait op ws://localhost:8080");

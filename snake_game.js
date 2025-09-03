@@ -6,6 +6,7 @@
   const ctx = canvas.getContext("2d");
   const playerName = "Speler";
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  let otherPlayers = {};
 
   function resize() {
     const { clientWidth: w, clientHeight: h } = canvas;
@@ -95,7 +96,7 @@
   const uiLen = document.getElementById("len");
 
   // --- WebSocket multiplayer ---
-  const ws = new WebSocket("ws://192.168.5.21:8080");
+  const ws = new WebSocket("ws://192.168.5.50:8080");
 
   let otherScores = {}; // scores van andere spelers
 
@@ -109,6 +110,9 @@
     if (msg.type === "allScores") {
       otherScores = msg.data;
     }
+    if (msg.type === "playerStates"){
+      otherPlayers = msg.data;
+    }
   };
 
   ws.onclose = () => {
@@ -120,9 +124,21 @@
   // Update score naar server bij punt
   function sendScore(score) {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "updateScore", score }));
+      ws.send(JSON.stringify({ type: "updateState",id: playerId,x: state.head.x, y: state.head.y , score }));
     }
   }
+
+  function sendState() {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: "updateState",
+      id: playerId,
+      x: state.head.x,
+      y: state.head.y,
+      score: state.score
+    }));
+  }
+}
   const multiHUD = document.getElementById("multiHUD");
 
   function drawOtherScores() {
@@ -401,7 +417,7 @@
     uiLen.textContent = state.maxTrail;
 
     // Stuur naar server
-    sendScore(state.score);
+    sendState();
   }
 
   // Geometrie helpers
@@ -609,6 +625,16 @@
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(q.x, sy, q.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const id in otherPlayers){
+      if (id === playerId)continue;
+      const op = otherPlayers[id];
+      const sy = op.y - state.cameraY;
+      ctx.fillStyle = "orange";
+      ctx.beginPath()
+      ctx.arc(op.x, sy, 12, 0, Math.PI * 2)
       ctx.fill();
     }
   }
