@@ -104,10 +104,15 @@
     ws.send(JSON.stringify({ type: "join", id: playerId, score: 0 }));
   };
 
+  let otherStates = {};
+
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "allScores") {
       otherScores = msg.data;
+    }
+    if (msg.type === "allStates") {
+      otherStates = msg.data;
     }
   };
 
@@ -490,7 +495,7 @@
       const rGlow = p.r * 2.2 * rf,
         rCore = p.r * rf;
       const g = ctx.createRadialGradient(p.x, sy, 0, p.x, sy, rGlow);
-      g.addColorStop(0, `hsla(${p.hue}, 90%, 80%, .95)`);
+      g.addColorStop(0, `hsla(${p.hue}, 90%, 80%, .95)`); 
       g.addColorStop(1, `hsla(${p.hue}, 80%, 50%, .0)`);
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -500,6 +505,24 @@
       ctx.beginPath();
       ctx.arc(p.x, sy, rCore, 0, Math.PI * 2);
       ctx.fill();
+    }
+     for (const id in otherStates) {
+      if (id === playerId) continue; // skip yourself
+      const player = otherStates[id];
+      if (!player.trail || player.trail.length < 2) continue;
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      for (let i = 0; i < player.trail.length; i++) {
+        const p = player.trail[i];
+        const sy = p.y - state.cameraY;
+        if (i === 0) ctx.moveTo(p.x, sy);
+        else ctx.lineTo(p.x, sy);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
     // statics
     for (const s of state.statics) {
@@ -632,6 +655,19 @@
     }
   }
 
+  function sendState() {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "state",
+        id: playerId,
+        name: playerName,
+        head: state.head,
+        trail: state.trail,
+        score: state.score
+      }));
+    }
+  }
+
   // loop
   let last = performance.now();
   function frame(now) {
@@ -640,6 +676,7 @@
     const dt = state.slowmo ? rawDt * 0.25 : rawDt;
     update(dt);
     draw();
+    sendState();
     drawOtherScores();
     requestAnimationFrame(frame);
   }
@@ -652,6 +689,8 @@
   fit();
   reset();
   requestAnimationFrame(frame);
+
+
 
   // --- Hier komt ALLE bestaande JavaScript game logica ---
   // Kopieer volledig de originele update(), draw(), reset(), audio en andere functies
