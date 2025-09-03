@@ -102,7 +102,14 @@
 
   ws.onopen = () => {
     console.log("Verbonden met multiplayer server");
-    ws.send(JSON.stringify({ type: "join", id: playerId, score: 0 }));
+    ws.send(JSON.stringify({ 
+      type: "join", 
+      id: playerId, 
+      name: playerName, 
+      score: 0, 
+      x: state.head.x, 
+      y: state.head.y 
+    }));
   };
 
   ws.onmessage = (event) => {
@@ -111,38 +118,43 @@
       otherScores = msg.data;
     }
     if (msg.type === "playerStates"){
-      otherPlayers = msg.data;
+      // Filter out our own player from the other players list
+      const filteredPlayers = { ...msg.data };
+      delete filteredPlayers[playerId];
+      otherPlayers = filteredPlayers;
+      
+      // Keep scores for all players including ourselves
       otherScores = msg.data;
-      console.log("recieved player states", otherPlayers)
+      console.log("received player states", otherPlayers);
     }
   };
 
   ws.onclose = () => {
-    // eventueel iets naar server sturen of client cleanup
-    delete players[playerId];
-    broadcastScores();
+    console.log("Connection closed");
   };
 
   function sendState() {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: "updateState",
-      id: playerId,
-      x: state.head.x,
-      y: state.head.y,
-      score: state.score
-    }));
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "updateState",
+        id: playerId,
+        name: playerName,
+        x: state.head.x,
+        y: state.head.y,
+        score: state.score,
+        trail: state.trail.slice(-20) // Send last 20 trail points for smooth rendering
+      }));
+    }
   }
-}
 
-let lastStateSent = 0;
-function sendStateThrottled() {
-  const now = performance.now();
-  if (now - lastStateSent > 300) { // Send max 10x per second
-    sendState();
-    lastStateSent = now;
+  let lastStateSent = 0;
+  function sendStateThrottled() {
+    const now = performance.now();
+    if (now - lastStateSent > 50) { // Send 20x per second for smoother movement
+      sendState();
+      lastStateSent = now;
+    }
   }
-}
 
   const multiHUD = document.getElementById("multiHUD");
 
@@ -151,14 +163,13 @@ function sendStateThrottled() {
     for (const id in otherScores) {
       const player = otherScores[id];
       const div = document.createElement("div");
-      div.textContent = `${player.name}:${player.score}`;
+      div.textContent = `${player.name || 'Player'}:${player.score || 0}`;
       div.style.color = playerId === id ? "#fff" : "#94a3b8"; // jezelf wit
       multiHUD.appendChild(div);
     }
   }
 
   // Listeners
-
   let mouse = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
   window.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -166,18 +177,20 @@ function sendStateThrottled() {
     mouse.y = e.clientY - rect.top;
     sendStateThrottled();
   });
+  
   window.addEventListener(
     "touchmove",
     (e) => {
       const rect = canvas.getBoundingClientRect();
-      // We nemen de eerste aanraking
       const touch = e.touches[0];
       mouse.x = touch.clientX - rect.left;
       mouse.y = touch.clientY - rect.top;
-      e.preventDefault(); // voorkomt scrollen op mobiel tijdens touch
+      sendStateThrottled();
+      e.preventDefault();
     },
     { passive: false }
   );
+  
   window.addEventListener("keydown", (e) => {
     if (e.key === "r" || e.key === "R") reset();
     if (e.key === "d" || e.key === "D") state.debug = !state.debug;
@@ -186,6 +199,7 @@ function sendStateThrottled() {
       audio.running ? stopAudio() : startAudio();
     }
   });
+  
   window.addEventListener(
     "pointerdown",
     () => {
@@ -197,7 +211,7 @@ function sendStateThrottled() {
   let touchActive = false;
 
   canvas.addEventListener("pointerdown", (e) => {
-    e.preventDefault(); // voorkom scroll
+    e.preventDefault();
     touchActive = true;
     const rect = canvas.getBoundingClientRect();
     mouse.x = e.clientX - rect.left;
@@ -206,10 +220,11 @@ function sendStateThrottled() {
 
   canvas.addEventListener("pointermove", (e) => {
     if (!touchActive) return;
-    e.preventDefault(); // voorkom scroll
+    e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     mouse.x = e.clientX - rect.left;
     mouse.y = e.clientY - rect.top;
+    sendStateThrottled();
   });
 
   canvas.addEventListener("pointerup", (e) => {
@@ -256,6 +271,7 @@ function sendStateThrottled() {
   function randRange(a, b) {
     return a + Math.random() * (b - a);
   }
+  
   let seedCounter = 1;
   function spawnDot(W, yMin, yMax) {
     const speed = 40 + Math.random() * 80;
@@ -271,6 +287,7 @@ function sendStateThrottled() {
       hue: 200 + Math.random() * 120,
     };
   }
+  
   function spawnStatic(W, yMin, yMax) {
     return {
       id: seedCounter++,
@@ -294,16 +311,16 @@ function sendStateThrottled() {
       damping = 5.0;
     const dx = target.x - state.head.x,
       dy = target.y - state.head.y;
-    //state.head.x = target.x;
-    //state.head.y = target.y;
+    
     state.head.vx = 0;
     state.head.vy = 0;
     state.head.y = Math.max(
       state.cameraY,
       Math.min(state.cameraY + H, state.head.y)
     );
+    
     const last = state.trail[state.trail.length - 1];
-    const minDist = 1; // minimale afstand voor nieuw trailpunt
+    const minDist = 1;
     if (
       !last ||
       Math.hypot(state.head.x - last.x, state.head.y - last.y) > minDist
@@ -312,9 +329,10 @@ function sendStateThrottled() {
       while (state.trail.length > state.maxTrail) state.trail.shift();
     }
 
-    const lerp = 0.05; // hoe groter, hoe dichter bij muis
+    const lerp = 0.05;
     state.head.x += (target.x - state.head.x) * lerp;
     state.head.y += (target.y - state.head.y) * lerp;
+    
     for (const p of state.points) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -335,7 +353,6 @@ function sendStateThrottled() {
         ddy = p.y - state.head.y;
       if (ddx * ddx + ddy * ddy <= (eatR + p.r) * (eatR + p.r)) {
         state.points.splice(i, 1);
-         // Wanneer speler een punt eet:
         state.score += 1;
         uiScore.textContent = state.score;
         state.maxTrail = Math.min(300, state.maxTrail + 10);
@@ -344,7 +361,6 @@ function sendStateThrottled() {
           spawnDot(W, state.cameraY + H + 100, state.cameraY + H * 1.5)
         );
         burst(p.x, p.y, p.hue);
-
         sendState();
       }
     }
@@ -360,7 +376,8 @@ function sendStateThrottled() {
       const y = state.statics[i].y;
       if (y > cullBelow || y < cullAbove) state.statics.splice(i, 1);
     }
-    // Endless chunk spawns bovenin (zodra we chunkHeight hebben afgelegd)
+    
+    // Endless chunk spawns bovenin
     while (state.cameraY - state.lastSpawnY >= state.chunkHeight) {
       const yMin = state.cameraY + H + 100,
         yMax = state.cameraY + H * 1.5;
@@ -370,7 +387,8 @@ function sendStateThrottled() {
         state.statics.push(spawnStatic(W, yMin, yMax));
       state.lastSpawnY += state.chunkHeight;
     }
-    // Safeguard: hou altijd genoeg objecten rond de camera (als speler veel opeet)
+    
+    // Safeguard: hou altijd genoeg objecten rond de camera
     const bandMin = state.cameraY + H + 100,
       bandMax = state.cameraY + H * 1.3;
     while (state.points.length < state.minPoints)
@@ -418,15 +436,6 @@ function sendStateThrottled() {
         q.y += q.vy * dt;
       }
     }
-/*
-    // Wanneer speler een punt eet:
-    state.score += 1;
-    uiScore.textContent = state.score;
-    state.maxTrail = Math.min(300, state.maxTrail + 10);
-    uiLen.textContent = state.maxTrail;
-
-    // Stuur naar server
-    sendState();*/
   }
 
   // Geometrie helpers
@@ -445,6 +454,7 @@ function sendStateThrottled() {
     }
     return inside;
   }
+  
   function segCircleIntersects(ax, ay, bx, by, cx, cy, r) {
     const abx = bx - ax,
       aby = by - ay;
@@ -458,6 +468,7 @@ function sendStateThrottled() {
       dy = py - cy;
     return dx * dx + dy * dy <= r * r;
   }
+  
   function polygonIntersectsCircle(poly, cx, cy, r) {
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i];
@@ -502,16 +513,63 @@ function sendStateThrottled() {
     }
   }
 
+  // Draw other player trails
+  function drawOtherPlayerTrail(trail, hue = 60) {
+    if (!trail || trail.length < 2) return;
+    
+    const widthBase = 14;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    
+    // Draw trail path
+    ctx.beginPath();
+    for (let i = 0; i < trail.length - 1; i++) {
+      const p0 = trail[Math.max(0, i - 1)];
+      const p1 = trail[i];
+      const p2 = trail[i + 1];
+      const p3 = trail[Math.min(trail.length - 1, i + 2)];
+      
+      const t = 0.5;
+      const cp1x = p1.x + ((p2.x - p0.x) * t) / 6;
+      const cp1y = p1.y - state.cameraY + ((p2.y - state.cameraY - (p0.y - state.cameraY)) * t) / 6;
+      const cp2x = p2.x - ((p3.x - p1.x) * t) / 6;
+      const cp2y = p2.y - state.cameraY - ((p3.y - state.cameraY - (p1.y - state.cameraY)) * t) / 6;
+      
+      if (i === 0) ctx.moveTo(p1.x, p1.y - state.cameraY);
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y - state.cameraY);
+    }
+    
+    // Outer glow
+    ctx.strokeStyle = `hsla(${hue}, 80%, 60%, .25)`;
+    ctx.lineWidth = widthBase;
+    ctx.stroke();
+    
+    // Inner trail
+    const start = trail[0];
+    const end = trail[trail.length - 1];
+    const lg = ctx.createLinearGradient(
+      start.x, start.y - state.cameraY,
+      end.x, end.y - state.cameraY
+    );
+    lg.addColorStop(0, `hsla(${hue}, 95%, 70%, .8)`);
+    lg.addColorStop(1, `hsla(${hue}, 80%, 50%, .2)`);
+    ctx.strokeStyle = lg;
+    ctx.lineWidth = widthBase * 0.6;
+    ctx.stroke();
+  }
+
   // Rendering
   function draw() {
     const W = canvas.clientWidth,
       H = canvas.clientHeight;
     drawBackground(W, H);
-    const toScreenY = (wy) => wy - state.cameraY; // punten
+    const toScreenY = (wy) => wy - state.cameraY;
+    
+    // Draw points
     for (const p of state.points) {
       const sy = toScreenY(p.y);
-      if (sy < -60 || sy > H + 60) continue; // random tot 4x groter op de beat
-      const rf = 1 + beatPulse * (randBeat(p.seed) * 3.0); // 1..4x
+      if (sy < -60 || sy > H + 60) continue;
+      const rf = 1 + beatPulse * (randBeat(p.seed) * 3.0);
       const rGlow = p.r * 2.2 * rf,
         rCore = p.r * rf;
       const g = ctx.createRadialGradient(p.x, sy, 0, p.x, sy, rGlow);
@@ -525,10 +583,12 @@ function sendStateThrottled() {
       ctx.beginPath();
       ctx.arc(p.x, sy, rCore, 0, Math.PI * 2);
       ctx.fill();
-
-      drawOtherPlayers();
     }
-    // statics
+    
+    // Draw other players and their trails
+    drawOtherPlayers();
+    
+    // Draw statics
     for (const s of state.statics) {
       const sy = toScreenY(s.y);
       if (sy < -50 || sy > H + 50) continue;
@@ -551,7 +611,8 @@ function sendStateThrottled() {
         ctx.fill();
       }
     }
-    // trail
+    
+    // Draw own trail
     if (state.trail.length > 2) {
       const pts = state.trail;
       const widthBase = 18;
@@ -600,6 +661,8 @@ function sendStateThrottled() {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      
+      // Draw player head
       const head = end;
       const glow2 = ctx.createRadialGradient(
         head.x,
@@ -620,12 +683,14 @@ function sendStateThrottled() {
       ctx.arc(head.x, head.y - state.cameraY, 6.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    
     if (state.debug) {
       ctx.fillStyle = "rgba(255,255,255,.6)";
       for (const p of state.trail) {
         ctx.fillRect(p.x - 1.5, p.y - state.cameraY - 1.5, 3, 3);
       }
     }
+    
     // particles
     for (const q of particles) {
       const sy = q.y - state.cameraY;
@@ -638,15 +703,68 @@ function sendStateThrottled() {
       ctx.arc(q.x, sy, q.r, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
 
-    for (const id in otherPlayers){
-      if (id === playerId)continue;
+  function drawOtherPlayers() {
+    for (const id in otherPlayers) {
+      if (id === playerId) continue; // Skip self
+      
       const op = otherPlayers[id];
+      
+      // Safety checks for finite numbers
+      if (!op || !Number.isFinite(op.x) || !Number.isFinite(op.y)) {
+        console.warn('Invalid player data:', id, op);
+        continue;
+      }
+      
       const sy = op.y - state.cameraY;
-      ctx.fillStyle = "orange";
-      ctx.beginPath()
-      ctx.arc(op.x, sy, 12, 0, Math.PI * 2)
+      
+      // Only draw if player is visible on screen
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      if (sy < -100 || sy > H + 100 || op.x < -100 || op.x > W + 100) {
+        continue;
+      }
+      
+      // Draw other player's trail first (behind the player)
+      if (op.trail && op.trail.length > 2) {
+        drawOtherPlayerTrail(op.trail, 60); // Yellow/orange hue for other players
+      }
+      
+      // Draw other player with glow effect
+      const playerRadius = 12;
+      
+      // Glow
+      const glow = ctx.createRadialGradient(op.x, sy, 0, op.x, sy, playerRadius * 2.5);
+      glow.addColorStop(0, 'rgba(255, 165, 0, 0.8)'); // Orange glow
+      glow.addColorStop(1, 'rgba(255, 165, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(op.x, sy, playerRadius * 2.5, 0, Math.PI * 2);
       ctx.fill();
+      
+      // Core
+      ctx.fillStyle = "orange";
+      ctx.beginPath();
+      ctx.arc(op.x, sy, playerRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Inner highlight
+      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      ctx.beginPath();
+      ctx.arc(op.x, sy, playerRadius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Player name above
+      ctx.fillStyle = "white";
+      ctx.font = "12px ui-sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(op.name || `Player ${id.slice(-4)}`, op.x, sy - playerRadius - 8);
+      
+      // Score below
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillText(`${op.score || 0}`, op.x, sy + playerRadius + 8);
     }
   }
 
@@ -689,57 +807,5 @@ function sendStateThrottled() {
   fit();
   reset();
   requestAnimationFrame(frame);
-
-  function drawOtherPlayers() {
-  for (const id in otherPlayers) {
-    if (id === playerId) continue; // Skip self
-    
-    const op = otherPlayers[id];
-    
-    // Safety checks for finite numbers
-    if (!op || !Number.isFinite(op.x) || !Number.isFinite(op.y)) {
-      console.warn('Invalid player data:', id, op);
-      continue;
-    }
-    
-    const sy = op.y - state.cameraY;
-    
-    // Only draw if player is visible on screen
-    const W = canvas.clientWidth, H = canvas.clientHeight;
-    if (sy < -50 || sy > H + 50 || op.x < -50 || op.x > W + 50) {
-      continue;
-    }
-    
-    // Draw other player with glow effect
-    const playerRadius = 12;
-    
-    // Glow
-    const glow = ctx.createRadialGradient(op.x, sy, 0, op.x, sy, playerRadius * 2);
-    glow.addColorStop(0, 'rgba(255, 165, 0, 0.8)'); // Orange glow
-    glow.addColorStop(1, 'rgba(255, 165, 0, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(op.x, sy, playerRadius * 2, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Core
-    ctx.fillStyle = "orange";
-    ctx.beginPath();
-    ctx.arc(op.x, sy, playerRadius, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Player name above
-    ctx.fillStyle = "white";
-    ctx.font = "12px ui-sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(op.name || `Player ${id.slice(-4)}`, op.x, sy - playerRadius - 5);
-    
-    // Score below
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "#94a3b8";
-    ctx.fillText(`Score: ${op.score || 0}`, op.x, sy + playerRadius + 5);
-  }
-}
 
 })();
