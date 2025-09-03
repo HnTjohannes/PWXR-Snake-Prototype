@@ -112,6 +112,7 @@
     }
     if (msg.type === "playerStates"){
       otherPlayers = msg.data;
+      console.log("recieved player states", otherPlayers)
     }
   };
 
@@ -122,11 +123,11 @@
   };
 
   // Update score naar server bij punt
-  function sendScore(score) {
+/*  function sendScore(score) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "updateState",id: playerId,x: state.head.x, y: state.head.y , score }));
     }
-  }
+  }*/
 
   function sendState() {
   if (ws.readyState === WebSocket.OPEN) {
@@ -139,6 +140,16 @@
     }));
   }
 }
+
+let lastStateSent = 0;
+function sendStateThrottled() {
+  const now = performance.now();
+  if (now - lastStateSent > 100) { // Send max 10x per second
+    sendState();
+    lastStateSent = now;
+  }
+}
+
   const multiHUD = document.getElementById("multiHUD");
 
   function drawOtherScores() {
@@ -159,6 +170,7 @@
     const rect = canvas.getBoundingClientRect();
     mouse.x = e.clientX - rect.left;
     mouse.y = e.clientY - rect.top;
+    sendStateThrottled();
   });
   window.addEventListener(
     "touchmove",
@@ -329,6 +341,7 @@
         ddy = p.y - state.head.y;
       if (ddx * ddx + ddy * ddy <= (eatR + p.r) * (eatR + p.r)) {
         state.points.splice(i, 1);
+         // Wanneer speler een punt eet:
         state.score += 1;
         uiScore.textContent = state.score;
         state.maxTrail = Math.min(300, state.maxTrail + 10);
@@ -337,6 +350,8 @@
           spawnDot(W, state.cameraY + H + 100, state.cameraY + H * 1.5)
         );
         burst(p.x, p.y, p.hue);
+
+        sendState();
       }
     }
 
@@ -409,7 +424,7 @@
         q.y += q.vy * dt;
       }
     }
-
+/*
     // Wanneer speler een punt eet:
     state.score += 1;
     uiScore.textContent = state.score;
@@ -417,7 +432,7 @@
     uiLen.textContent = state.maxTrail;
 
     // Stuur naar server
-    sendState();
+    sendState();*/
   }
 
   // Geometrie helpers
@@ -516,6 +531,8 @@
       ctx.beginPath();
       ctx.arc(p.x, sy, rCore, 0, Math.PI * 2);
       ctx.fill();
+
+      drawOtherPlayers();
     }
     // statics
     for (const s of state.statics) {
@@ -679,6 +696,57 @@
   reset();
   requestAnimationFrame(frame);
 
+  function drawOtherPlayers() {
+  for (const id in otherPlayers) {
+    if (id === playerId) continue; // Skip self
+    
+    const op = otherPlayers[id];
+    
+    // Safety checks for finite numbers
+    if (!op || !Number.isFinite(op.x) || !Number.isFinite(op.y)) {
+      console.warn('Invalid player data:', id, op);
+      continue;
+    }
+    
+    const sy = op.y - state.cameraY;
+    
+    // Only draw if player is visible on screen
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    if (sy < -50 || sy > H + 50 || op.x < -50 || op.x > W + 50) {
+      continue;
+    }
+    
+    // Draw other player with glow effect
+    const playerRadius = 12;
+    
+    // Glow
+    const glow = ctx.createRadialGradient(op.x, sy, 0, op.x, sy, playerRadius * 2);
+    glow.addColorStop(0, 'rgba(255, 165, 0, 0.8)'); // Orange glow
+    glow.addColorStop(1, 'rgba(255, 165, 0, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(op.x, sy, playerRadius * 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Core
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.arc(op.x, sy, playerRadius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Player name above
+    ctx.fillStyle = "white";
+    ctx.font = "12px ui-sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(op.name || `Player ${id.slice(-4)}`, op.x, sy - playerRadius - 5);
+    
+    // Score below
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(`Score: ${op.score || 0}`, op.x, sy + playerRadius + 5);
+  }
+}
   // --- Hier komt ALLE bestaande JavaScript game logica ---
   // Kopieer volledig de originele update(), draw(), reset(), audio en andere functies
   // uit je eerste versie. Zorg dat ze intact blijven.

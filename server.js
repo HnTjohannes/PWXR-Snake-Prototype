@@ -29,6 +29,7 @@ wss.on('connection', (ws) => {
       players[playerId].x = msg.x;
       players[playerId].y = msg.y;
     }
+    
   });
 
   ws.on('close', () => {
