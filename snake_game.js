@@ -112,6 +112,7 @@
     }
     if (msg.type === "playerStates"){
       otherPlayers = msg.data;
+      otherScores = msg.data;
       console.log("recieved player states", otherPlayers)
     }
   };
@@ -121,13 +122,6 @@
     delete players[playerId];
     broadcastScores();
   };
-
-  // Update score naar server bij punt
-/*  function sendScore(score) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "updateState",id: playerId,x: state.head.x, y: state.head.y , score }));
-    }
-  }*/
 
   function sendState() {
   if (ws.readyState === WebSocket.OPEN) {
@@ -144,7 +138,7 @@
 let lastStateSent = 0;
 function sendStateThrottled() {
   const now = performance.now();
-  if (now - lastStateSent > 100) { // Send max 10x per second
+  if (now - lastStateSent > 300) { // Send max 10x per second
     sendState();
     lastStateSent = now;
   }
@@ -747,8 +741,5 @@ function sendStateThrottled() {
     ctx.fillText(`Score: ${op.score || 0}`, op.x, sy + playerRadius + 5);
   }
 }
-  // --- Hier komt ALLE bestaande JavaScript game logica ---
-  // Kopieer volledig de originele update(), draw(), reset(), audio en andere functies
-  // uit je eerste versie. Zorg dat ze intact blijven.
-  // Alle verwijzingen naar <aside class="panel"> kunnen veilig worden verwijderd.
+
 })();
