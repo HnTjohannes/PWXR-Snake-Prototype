@@ -1,0 +1,62 @@
+// Game constants and configuration
+const CONSTANTS = {
+  PHYSICS: {
+    MIN_DISTANCE: 1,
+    PLAYER_LERP: 0.05,
+    MIN_LOOP_LENGTH: 25,
+    MIN_GAP: 18,
+    CLOSE_DISTANCE_SQUARED: 400, // 20 * 20
+    EAT_RADIUS_BASE: 18,
+  },
+  
+  RENDERING: {
+    TRAIL_WIDTH_BASE: 18,
+    TRAIL_HUE: 275,
+    OTHER_PLAYER_TRAIL_WIDTH: 14,
+    OTHER_PLAYER_HUE: 60,
+    POINT_GLOW_MULTIPLIER: 2.2,
+    HEAD_GLOW_RADIUS: 28,
+    HEAD_RADIUS: 6.5,
+    OTHER_PLAYER_RADIUS: 12,
+  },
+
+  PARTICLES: {
+    BURST_COUNT: 18,
+    MIN_SPEED: 80,
+    MAX_SPEED: 260,
+    MIN_RADIUS: 10,
+    MAX_RADIUS: 26,
+    MIN_LIFE: 0.6,
+    MAX_LIFE: 1.1,
+  },
+
+  AUDIO: {
+    BPM: 96,
+    BASE_FREQUENCY: 196,
+    SEQUENCE: [0, 3, 5, 7, 10, 7, 5, 3],
+    BEAT_DECAY: 0.048, // 0.016 * 3
+  },
+
+  NETWORK: {
+    WS_URL: "ws://192.168.5.50:8080",
+    STATE_SEND_INTERVAL: 50, // milliseconds
+    TRAIL_SEND_LENGTH: 20,
+  },
+
+  GAMEPLAY: {
+    INITIAL_TRAIL_LENGTH: 60,
+    MAX_TRAIL_LENGTH: 300,
+    POINTS_PER_COLLECTED: 1,
+    TRAIL_INCREASE_PER_POINT: 10,
+    POINTS_PER_STATIC: 5,
+    SCROLL_SPEED: 120,
+    STRIPE_WIDTH: 80,
+    STRIPE_AMPLITUDE: 30,
+    BRICK_HEIGHT: 36,
+  },
+
+  UI: {
+    DPR_MAX: 2,
+    DPR_MIN: 1,
+  }
+};
