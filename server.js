@@ -180,6 +180,21 @@ wss.on('connection', (ws) => {
           players: players,
           yourId: playerId
         }));
+        
+        wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN && client !== ws) {
+      try {
+        client.send(JSON.stringify({
+          type: 'playerJoined',
+          player: players[playerId]
+        }));
+      } catch (error) {
+        console.error('Error notifying clients of new player:', error);
+      }
+    }
+  });
+
+        
       }
       
       if (msg.type === 'collectPoint') {
@@ -236,6 +251,48 @@ wss.on('connection', (ws) => {
           console.log(`Player ${playerId} captured statics:`, capturedStatics);
         }
       }
+
+      if (msg.type === 'shockwave') {
+  // Handle shockwave from player
+  if (players[playerId]) {
+    // Apply shockwave effects to other players
+    for (const otherId in players) {
+      if (otherId === playerId) continue;
+      const otherPlayer = players[otherId];
+      const distance = Math.sqrt(
+        Math.pow(msg.x - otherPlayer.x, 2) + 
+        Math.pow(msg.y - otherPlayer.y, 2)
+      );
+      
+      if (distance <= msg.radius) {
+        // Reduce other player's trail (this will be sent in the next state update)
+        // For now, we'll let the client handle the visual feedback
+      }
+    }
+    
+    // Broadcast shockwave to all other players
+    const shockwaveMsg = {
+      type: 'shockwave',
+      playerId: playerId,
+      x: msg.x,
+      y: msg.y,
+      radius: msg.radius
+    };
+    
+    // Send to all clients except the sender
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && client !== ws) {
+        try {
+          client.send(JSON.stringify(shockwaveMsg));
+        } catch (error) {
+          console.error('Error sending shockwave to client:', error);
+        }
+      }
+    });
+    
+    console.log(`Player ${playerId} fired shockwave at (${msg.x}, ${msg.y}) with radius ${msg.radius}`);
+  }
+}
 
       if (msg.type === 'updateState') {
         if (msg.id && players[msg.id]) {

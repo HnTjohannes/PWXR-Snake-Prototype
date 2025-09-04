@@ -62,7 +62,13 @@
 
       this.input.onPointerDown = () => {
         if (!this.audio.isRunning) this.audio.start();
+
+        this.startShockwaveCharge();
       };
+
+      this.input.onPointerUp = () => {
+        this.releaseShockwave();
+};
 
       this.network.onMessage = (msg) => this.handleNetworkMessage(msg);
       this.network.onStatusChange = (connected) => this.ui.updateConnectionStatus(connected);
@@ -98,6 +104,10 @@
         case "staticscaptured":
           this.handleStaticsCaptured(msg);
           break;
+        case "shockwave":
+          this.handleShockwaveReceived(msg);
+          this.handleOtherPlayerShockwave(msg);
+          break;
       }
     }
 
@@ -123,6 +133,31 @@
       }
     }
 
+    handleShockwaveReceived(msg) {
+  // Calculate if we're hit by the shockwave
+  const distance = this.physics.getDistance(
+    { x: msg.x, y: msg.y }, 
+    { x: this.state.head.x, y: this.state.head.y }
+  );
+  
+  if (distance <= msg.radius) {
+    // We got hit! Reduce our trail
+    const reduction = Math.floor(this.state.maxTrail * 0.2); // Lose 20% of trail
+    this.state.maxTrail = Math.max(20, this.state.maxTrail - reduction);
+    this.state.trail = this.state.trail.slice(-this.state.maxTrail);
+    
+    // Visual feedback
+    this.particles.burst(this.state.head.x, this.state.head.y, 25); // Red particles
+    this.ui.updateLength(this.state.maxTrail);
+  }
+}
+    handleOtherPlayerShockwave(msg) {
+      if (msg.playerId === this.playerId) return;
+  
+  // Create visual shockwave effect for other players
+      this.particles.shockwaveBurst(msg.x, msg.y, msg.radius);
+}
+
     update(dt) {
       this.state.bgTime += dt;
       this.audio.update();
@@ -132,6 +167,7 @@
       this.handlePointCollection();
       this.handleStaticCapture();
       this.particles.update(dt);
+      this.updateShockwave(dt);
     }
 
     handlePointCollection() {
@@ -170,11 +206,14 @@
           this.state.score += 5;
           capturedStatics.push(staticObj.id);
           this.particles.burst(staticObj.x, staticObj.y, 120);
+
+          this.state.maxTrail = Math.max(60, this.state.maxTrail - 5);
         }
       }
 
       if (capturedStatics.length > 0) {
         this.ui.updateScore(this.state.score);
+        this.ui.updateLength(this.state.maxTrail);
         this.network.captureStatics(capturedStatics);
       }
     }
@@ -189,6 +228,7 @@
       this.renderer.drawOtherPlayers(this.otherPlayers, this.playerId);
       this.renderer.drawStatics(this.state.statics, this.audio.beatPulse);
       this.renderer.drawPlayerTrail(this.state.trail);
+      this.renderer.drawShockwave(this.state.shockwave);
       this.renderer.drawParticles(this.particles.particles);
       
       if (this.state.debug) {
@@ -208,10 +248,103 @@
       this.state.maxTrail = 60;
       this.state.score = 0;
       this.state.bgTime = 0;
+
+      this.state.shockwave.charging = false;
+      this.state.shockwave.active = false;
+      this.state.shockwave.activeTime = 0;
+      this.state.shockwave.chargeTime = 0;
       
       this.ui.updateScore(0);
       this.ui.updateLength(this.state.maxTrail);
     }
+
+ startShockwaveCharge() {
+  if (this.state.maxTrail <= 20) return; // Need minimum trail to charge
+  if (this.state.shockwave.active) return;
+  
+  this.state.shockwave.charging = true;
+  this.state.shockwave.chargeTime = 0;
+  this.state.shockwave.x = this.state.head.x;
+  this.state.shockwave.y = this.state.head.y;
+}
+
+releaseShockwave() {
+  if (!this.state.shockwave.charging) return;
+  
+  const chargeRatio = Math.min(1, this.state.shockwave.chargeTime / this.state.shockwave.maxChargeTime);
+
+    if (chargeRatio < 0.25) {
+    this.state.shockwave.charging = false;
+    this.state.shockwave.chargeTime = 0;
+    return;
+  }
+
+  if (chargeRatio < 0.1) {
+    this.state.shockwave.charging = false;
+    return;
+  }
+  
+  // Calculate shockwave power based on charge time and trail length
+  const maxRadius = Math.min(200, this.state.maxTrail * 2);
+  const finalRadius = maxRadius * chargeRatio;
+  const trailCost = Math.floor(this.state.maxTrail * 0.3 * chargeRatio);
+  
+  // Reduce our trail
+  this.state.maxTrail = Math.max(20, this.state.maxTrail - trailCost);
+  this.state.trail = this.state.trail.slice(-this.state.maxTrail);
+  
+  // Activate shockwave
+  this.state.shockwave.charging = false;
+  this.state.shockwave.active = true;
+  this.state.shockwave.radius = finalRadius;
+  this.state.shockwave.activeTime = 0;
+  
+  // Send shockwave to network
+  this.network.sendShockwave(this.state.shockwave.x, this.state.shockwave.y, finalRadius);
+  
+  // Apply to other players locally
+  this.applyShockwaveToOthers(this.state.shockwave.x, this.state.shockwave.y, finalRadius);
+  
+  this.ui.updateLength(this.state.maxTrail);
+}
+
+applyShockwaveToOthers(x, y, radius) {
+  for (const id in this.otherPlayers) {
+    const player = this.otherPlayers[id];
+    if (!player) continue;
+    
+    const distance = this.physics.getDistance({ x, y }, { x: player.x, y: player.y });
+    if (distance <= radius) {
+      // Visual effect for hit player
+      this.particles.burst(player.x, player.y, 0); // Red particles
+    }
+  }
+}
+
+updateShockwave(dt) {
+  if (this.state.shockwave.charging) {
+    this.state.shockwave.chargeTime += dt;
+    this.state.shockwave.chargeTime = Math.min(this.state.shockwave.chargeTime, this.state.shockwave.maxChargeTime);
+
+    this.state.shockwave.x = this.state.head.x;
+    this.state.shockwave.y = this.state.head.y;
+
+    if (this.state.shockwave.chargeTime >= this.state.shockwave.maxChargeTime) {
+      this.releaseShockwave();
+    }
+  }
+  
+  if (this.state.shockwave.active) {
+    this.state.shockwave.activeTime += dt;
+    if (this.state.shockwave.activeTime >= this.state.shockwave.duration) {
+      this.state.shockwave.active = false;
+      this.state.shockwave.activeTime = 0;
+    }
+  }
+}
+
+
+
 
     startGameLoop() {
       const frame = (now) => {
@@ -244,6 +377,17 @@
       this.scrollSpeed = 120;
       this.bgTime = 0;
       this.mouse = { x: 0, y: 0 };
+      this.shockwave = {
+      charging: false,
+      chargeTime: 0,
+      maxChargeTime: 2.0,
+      radius: 0,
+      active: false,
+      x: 0,
+      y: 0,
+      duration: 0.5,
+      activeTime: 0
+    };
     }
   }
 
@@ -328,15 +472,26 @@
         staticIds: staticIds
       });
     }
+
+    sendShockwave(x, y, radius) {
+  this.send({
+    type: "shockwave",
+    x: x,
+    y: y,
+    radius: radius
+  });
+}
   }
 
   class InputHandler {
     constructor(canvas) {
       this.canvas = canvas;
       this.touchActive = false;
+      this.mouseDown = false;
       this.onMove = null;
       this.onKeyDown = null;
       this.onPointerDown = null;
+      this.onPointerUp = null;
       
       this.setupEventListeners();
     }
@@ -346,12 +501,31 @@
       window.addEventListener("touchmove", (e) => this.handleTouchMove(e), { passive: false });
       window.addEventListener("keydown", (e) => this.onKeyDown?.(e.key));
       window.addEventListener("pointerdown", () => this.onPointerDown?.(), { once: true });
+      window.addEventListener("mousedown", (e) => this.handleMouseDown(e));
+      window.addEventListener("mouseup", (e) => this.handleMouseUp(e));
 
       this.canvas.addEventListener("pointerdown", (e) => this.handlePointerDown(e));
       this.canvas.addEventListener("pointermove", (e) => this.handlePointerMove(e));
       this.canvas.addEventListener("pointerup", (e) => this.handlePointerUp(e));
       this.canvas.addEventListener("pointercancel", (e) => this.handlePointerUp(e));
+
+      // Add double tap detection for mobile
+  this.lastTap = 0;
+  this.canvas.addEventListener("touchstart", (e) => {
+    const now = Date.now();
+    if (now - this.lastTap < 300) {
+      // Double tap detected
+      this.onPointerDown?.();
     }
+    this.lastTap = now;
+  });
+  
+  this.canvas.addEventListener("touchend", (e) => {
+    this.onPointerUp?.();
+  });
+    }
+
+
 
     handleMouseMove(e) {
       const rect = this.canvas.getBoundingClientRect();
@@ -391,7 +565,19 @@
       e.preventDefault();
       this.touchActive = false;
     }
+
+    handleMouseDown(e) {
+      if (e.target === this.canvas) {
+    this.mouseDown = true;
+    this.onPointerDown?.();
   }
+}
+
+    handleMouseUp(e) {
+   this.mouseDown = false;
+    this.onPointerUp?.();
+}
+ }
 
   class AudioManager {
     constructor() {
@@ -539,17 +725,20 @@
       state.head.y += (target.y - state.head.y) * lerp;
     }
 
-    updateTrail(state) {
-      const last = state.trail[state.trail.length - 1];
-      const minDist = 1;
-      
-      if (!last || this.getDistance(state.head, last) > minDist) {
-        state.trail.push({ x: state.head.x, y: state.head.y });
-        while (state.trail.length > state.maxTrail) {
-          state.trail.shift();
-        }
-      }
+   updateTrail(state) {
+     const last = state.trail[state.trail.length - 1];
+     const minDist = 8; // Increase minimum distance
+  
+    if (!last || this.getDistance(state.head, last) > minDist) {
+      state.trail.push({ x: state.head.x, y: state.head.y });
+    
+    
+      const targetLength = Math.floor(state.maxTrail / minDist);
+    while (state.trail.length > targetLength) {
+      state.trail.shift();
     }
+  }
+}
 
     getDistance(p1, p2) {
       const dx = p1.x - p2.x;
@@ -656,6 +845,27 @@
         }
       }
     }
+
+    shockwaveBurst(x, y, radius) {
+  const particleCount = Math.min(30, Math.floor(radius / 5));
+  for (let i = 0; i < particleCount; i++) {
+    const angle = (i / particleCount) * Math.PI * 2;
+    const distance = radius * (0.8 + Math.random() * 0.4);
+    const particleX = x + Math.cos(angle) * distance;
+    const particleY = y + Math.sin(angle) * distance;
+    
+    this.particles.push({
+      x: particleX,
+      y: particleY,
+      vx: Math.cos(angle) * 100,
+      vy: Math.sin(angle) * 100,
+      r: 8 + Math.random() * 12,
+      hue: 200, // Blue for shockwave
+      life: 0.8 + Math.random() * 0.4,
+      maxLife: 1,
+    });
+  }
+}
   }
 
   class GameRenderer {
@@ -961,6 +1171,55 @@
         this.ctx.fillRect(point.x - 1.5, point.y - this.state.cameraY - 1.5, 3, 3);
       }
     }
+
+    drawShockwave(shockwave) {
+  if (shockwave.charging) {
+    const chargeRatio = Math.min(1, shockwave.chargeTime / shockwave.maxChargeTime);
+    const currentRadius = 50 + (150 * chargeRatio);
+    const screenY = shockwave.y - this.state.cameraY;
+    
+    // Charging ring
+    this.ctx.strokeStyle = `hsla(200, 100%, 70%, ${0.3 + chargeRatio * 0.4})`;
+    this.ctx.lineWidth = 3 + chargeRatio * 5;
+    this.ctx.beginPath();
+    this.ctx.arc(shockwave.x, screenY, currentRadius, 0, Math.PI * 2);
+    this.ctx.stroke();
+    
+    // Inner pulse
+    this.ctx.fillStyle = `hsla(200, 100%, 80%, ${0.1 + chargeRatio * 0.2})`;
+    this.ctx.beginPath();
+    this.ctx.arc(shockwave.x, screenY, currentRadius * 0.7, 0, Math.PI * 2);
+    this.ctx.fill();
+  }
+  
+  if (shockwave.active) {
+    const progress = shockwave.activeTime / shockwave.duration;
+    const currentRadius = shockwave.radius * (0.5 + progress * 0.5);
+    const alpha = 1 - progress;
+    const screenY = shockwave.y - this.state.cameraY;
+    
+    // Expanding shockwave ring
+    const gradient = this.ctx.createRadialGradient(
+      shockwave.x, screenY, currentRadius * 0.8,
+      shockwave.x, screenY, currentRadius
+    );
+    gradient.addColorStop(0, `hsla(200, 100%, 80%, 0)`);
+    gradient.addColorStop(1, `hsla(200, 100%, 80%, ${alpha * 0.8})`);
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(shockwave.x, screenY, currentRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+    
+    // Outer ring
+    this.ctx.strokeStyle = `hsla(200, 100%, 70%, ${alpha})`;
+    this.ctx.lineWidth = 4;
+    this.ctx.beginPath();
+    this.ctx.arc(shockwave.x, screenY, currentRadius, 0, Math.PI * 2);
+    this.ctx.stroke();
+  }
+}
+
 
     randBeat(seed) {
       let x = (seed * 9301 + Date.now() * 49297 + 233280) % 233280;
