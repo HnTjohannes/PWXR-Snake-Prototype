@@ -1,11 +1,16 @@
 {
-  "dependencies": {
-    "ws": "^8.18.3"
-  },
+  "name": "snake-multiplayer-game",
+  "version": "1.0.0",
+  "description": "Multiplayer snake game with WebSocket server",
+  "main": "site/server.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "node server.js"
-
+    "start": "node site/server.js",
+    "dev": "node site/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
