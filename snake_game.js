@@ -32,6 +32,10 @@
     }
 
     setupCanvas() {
+    const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+   this.DPR = isMobile ? 0.7 : Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  
+
       const ro = new ResizeObserver(() => this.resizeCanvas());
       ro.observe(this.canvas);
       this.resizeCanvas();
@@ -100,7 +104,7 @@
           this.handlePointCollected(msg);
           break;
 
-        case "staticsCaptured":
+       // case "staticsCaptured":
         case "staticscaptured":
           this.handleStaticsCaptured(msg);
           break;
@@ -142,7 +146,7 @@
   
   if (distance <= msg.radius) {
     // We got hit! Reduce our trail
-    const reduction = Math.floor(this.state.maxTrail * 0.5); // Lose 20% of trail
+    const reduction = Math.floor(this.state.maxTrail * 0.5); 
     this.state.maxTrail = Math.max(20, this.state.maxTrail - reduction);
     this.state.trail = this.state.trail.slice(-this.state.maxTrail);
     
@@ -1232,7 +1236,12 @@ this.screenFlash = {
       
       for (const particle of particles) {
         const screenY = particle.y - this.state.cameraY;
-        if (screenY < -60 || screenY > height + 60) continue;
+        if (screenY < -120 || screenY > height + 60) continue;
+
+            let alpha = particle.life / particle.maxLife;
+       if (screenY < 0) {
+          alpha *= Math.max(0, (screenY + 120) / 120); // Fade in over 120px
+    }
         
         const gradient = this.ctx.createRadialGradient(particle.x, screenY, 0, particle.x, screenY, particle.r);
         gradient.addColorStop(0, `hsla(${particle.hue}, 100%, 85%, ${particle.life / particle.maxLife})`);
