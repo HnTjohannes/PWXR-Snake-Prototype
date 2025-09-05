@@ -403,7 +403,7 @@ updateShockwave(dt) {
     }
 
     connect() {
-      this.ws = new WebSocket("ws://192.168.5.50:8080");
+      this.ws = new WebSocket("wss://pwxr-snake-prototype-c0cx.onrender.com");
       
       this.ws.onopen = () => {
         this.isConnected = true;
