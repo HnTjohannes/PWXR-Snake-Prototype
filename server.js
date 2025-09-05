@@ -150,15 +150,20 @@ wss.on('connection', (ws) => {
         });
       }
 
-      if (msg.type === 'shockwave') {
-        broadcast({
-          type: 'shockwave',
-          playerId: playerId,
-          x: msg.x,
-          y: msg.y,
-          radius: msg.radius
-        });
-      }
+     if (msg.type === 'shockwave') {
+  // Broadcast to all OTHER players (not sender)
+  wss.clients.forEach(client => {
+    if (client.readyState === client.OPEN && client !== ws) {
+      client.send(JSON.stringify({
+        type: 'shockwave',
+        playerId: playerId,
+        x: msg.x,
+        y: msg.y,
+        radius: msg.radius
+      }));
+    }
+  });
+}
       
     } catch (err) { console.error('Message parse error:', err); }
   });
@@ -179,8 +184,23 @@ setInterval(() => {
   const dt = Math.min(0.033, (now - lastUpdate) / 1000);
   lastUpdate = now;
 
+  // Update camera scrolling
+  gameState.cameraY -= gameState.scrollSpeed * dt;
+
   for (const id in players) {
     if (now - players[id].lastUpdate > 30000) delete players[id];
+  }
+
+   // Spawn new content as camera moves
+  if (gameState.cameraY - gameState.lastSpawnY < -gameState.chunkHeight) {
+    const W = 800;
+    for (let i = 0; i < gameState.pointsPerChunk; i++) {
+      gameState.points.push(spawnDot(W, gameState.lastSpawnY - gameState.chunkHeight, gameState.lastSpawnY));
+    }
+    for (let i = 0; i < gameState.staticsPerChunk; i++) {
+      gameState.statics.push(spawnStatic(W, gameState.lastSpawnY - gameState.chunkHeight, gameState.lastSpawnY));
+    }
+    gameState.lastSpawnY = gameState.cameraY;
   }
 
   if (wss.clients.size > 0) {
