@@ -42,7 +42,7 @@ function spawnStatic(W = 800, yMin, yMax) {
 
 // --- Initialize game ---
 function initializeGame() {
-  const W = 800, H = 600;
+  const W = 1200, H = 600;
   gameState.cameraY = 0;
   gameState.lastSpawnY = 0;
   gameState.points = [];
@@ -50,6 +50,9 @@ function initializeGame() {
   for (let i = 0; i < 16; i++) gameState.points.push(spawnDot(W, gameState.cameraY - H, gameState.cameraY + H * 2));
   for (let i = 0; i < 5; i++) gameState.statics.push(spawnStatic(W, gameState.cameraY - H, gameState.cameraY + H * 2));
 }
+
+
+
 initializeGame();
 
 // --- Express app setup ---
@@ -200,7 +203,7 @@ setInterval(() => {
 
    // Spawn new content as camera moves
   if (gameState.cameraY - gameState.lastSpawnY < -gameState.chunkHeight) {
-    const W = 800;
+    const W = 1200;
     for (let i = 0; i < gameState.pointsPerChunk; i++) {
       gameState.points.push(spawnDot(W, gameState.lastSpawnY - gameState.chunkHeight, gameState.lastSpawnY));
     }

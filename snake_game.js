@@ -514,7 +514,7 @@ this.screenFlash = {
           name: this.playerName,
           x: head.x,
           y: head.y,
-          trail: trail.slice(-20)
+          trail: trail.slice(-30)
         });
         this.lastStateSent = now;
       }
