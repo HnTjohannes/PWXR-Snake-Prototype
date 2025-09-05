@@ -403,8 +403,12 @@ updateShockwave(dt) {
     }
 
     connect() {
-      this.ws = new WebSocket("ws://192.168.5.50:8080");
-      
+       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.hostname === 'localhost' ? '192.168.5.50:8080' : window.location.host;
+        const wsUrl = `${wsProtocol}//${wsHost}`;
+  
+   this.ws = new WebSocket(wsUrl);
+
       this.ws.onopen = () => {
         this.isConnected = true;
         this.onStatusChange?.(true);

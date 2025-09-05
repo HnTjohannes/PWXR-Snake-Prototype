@@ -1,6 +1,20 @@
-// server.js
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
+// At the top of server.js, replace the port configuration:
+const port = process.env.PORT || 8080;
+const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '0.0.0.0';
+
+const wss = new WebSocket.Server({ port: port, host: host });
+
+
+
+// Update the health check server port:
+const healthPort = process.env.PORT ? parseInt(process.env.PORT) + 1 : 8081;
+server.listen(healthPort, '0.0.0.0', () => {
+  console.log(`Health check server running on http://0.0.0.0:${healthPort}/health`);
+});
+
+// Update console logs:
+console.log(`WebSocket server starting on ws://${host}:${port}`);
+console.log(`Shared game state server running on ws://${host}:${port}`);
 
 let players = {}; // { playerId: {score, name, x, y, trail} }
 let gameState = {
@@ -18,6 +32,53 @@ let gameState = {
 };
 
 console.log("WebSocket server starting on ws://0.0.0.0:8080");
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Simple static file server
+const mimeTypes = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpg',
+  '.gif': 'image/gif',
+  '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
+  '.woff': 'application/font-woff',
+  '.ttf': 'application/font-ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'application/font-otf',
+  '.svg': 'application/image/svg+xml'
+};
+
+function serveStaticFile(req, res) {
+  let filePath = '.' + req.url;
+  if (filePath === './') {
+    filePath = './snake_game.html';
+  }
+
+  const extname = String(path.extname(filePath)).toLowerCase();
+  const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if (error.code === 'ENOENT') {
+        res.writeHead(404);
+        res.end('File not found');
+      } else {
+        res.writeHead(500);
+        res.end('Server error: ' + error.code);
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
+}
 
 // Deterministic random functions (same as client)
 function randRange(a, b) {
@@ -382,8 +443,7 @@ const server = http.createServer((req, res) => {
       statics: gameState.statics.length
     }));
   } else {
-    res.writeHead(404);
-    res.end('Not Found');
+    serveStaticFile(req, res);
   }
 });
 
