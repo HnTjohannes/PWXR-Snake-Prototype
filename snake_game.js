@@ -460,7 +460,7 @@ this.screenFlash = {
     }
 
     connect() {
-      this.ws = new WebSocket("wss://pwxr-snake-prototype-c0cx.onrender.com");
+      this.ws = new WebSocket(`wss://${window.location.host}`);
       
       this.ws.onopen = () => {
         this.isConnected = true;
