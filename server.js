@@ -1,7 +1,7 @@
 // server.js
 
-// const PORT = process.env.PORT || 3000;
-// server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 const WebSocket = import('ws');
 const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
