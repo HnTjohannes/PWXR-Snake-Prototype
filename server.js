@@ -3,7 +3,7 @@
 // const PORT = process.env.PORT || 3000;
 // server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-const WebSocket = require('ws');
+const WebSocket = import('ws');
 const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
 
 let players = {}; // { playerId: {score, name, x, y, trail} }
@@ -374,7 +374,7 @@ setInterval(() => {
 }, 50); // 20 times per second
 
 // Health check endpoint
-const http = require('http');
+const http = import('http');
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
