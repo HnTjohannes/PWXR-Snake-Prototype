@@ -24,7 +24,8 @@ function spawnDot(W = 800, yMin, yMax) {
   const ang = Math.random() * Math.PI * 2;
   return { 
     id: gameState.seedCounter++, seed: Math.floor(Math.random() * 1e9), 
-    x: Math.random() * W, y: randRange(yMin, yMax), 
+    x: 50 + Math.random() * (W - 100), // Keep away from edges
+    y: yMin - 100, // Spawn above visible area
     vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed * 0.4, 
     r: 6 + Math.random() * 5, hue: 200 + Math.random() * 120 
   };
@@ -32,8 +33,11 @@ function spawnDot(W = 800, yMin, yMax) {
 
 function spawnStatic(W = 800, yMin, yMax) {
   return { 
+   
     id: gameState.seedCounter++, seed: Math.floor(Math.random() * 1e9), 
-    x: Math.random() * W, y: randRange(yMin, yMax), r: 16, captured: false 
+    x: 50 + Math.random() * (W - 100), // Keep away from edges
+    y: yMin - 100, // Spawn above visible area
+    r: 16, captured: false 
   };
 }
 
@@ -186,6 +190,12 @@ setInterval(() => {
 
   // Update camera scrolling
   gameState.cameraY -= gameState.scrollSpeed * dt;
+
+  for (const id in players) {
+  if (players[id]) {
+    players[id].y = gameState.cameraY + 300; // Keep players at consistent screen position
+  }
+}
 
   for (const id in players) {
     if (now - players[id].lastUpdate > 30000) delete players[id];
