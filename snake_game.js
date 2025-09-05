@@ -142,14 +142,25 @@
   
   if (distance <= msg.radius) {
     // We got hit! Reduce our trail
-    const reduction = Math.floor(this.state.maxTrail * 0.2); // Lose 20% of trail
+    const reduction = Math.floor(this.state.maxTrail * 0.5); // Lose 20% of trail
     this.state.maxTrail = Math.max(20, this.state.maxTrail - reduction);
     this.state.trail = this.state.trail.slice(-this.state.maxTrail);
     
     // Visual feedback
     this.particles.burst(this.state.head.x, this.state.head.y, 25); // Red particles
     this.ui.updateLength(this.state.maxTrail);
+  
+      // Activate hit effect
+    this.state.hitEffect.active = true;
+    this.state.hitEffect.blinkCount = 0;
+    this.state.hitEffect.blinkTimer = 0;
+
+    // Activate screen flash
+    this.state.screenFlash.active = true;
+    this.state.screenFlash.intensity = 1.0;
+    this.state.screenFlash.timer = 0;
   }
+
 }
     handleOtherPlayerShockwave(msg) {
       if (msg.playerId === this.playerId) return;
@@ -168,7 +179,40 @@
       this.handleStaticCapture();
       this.particles.update(dt);
       this.updateShockwave(dt);
+      this.updateHitEffect(dt);
+      this.updateScreenFlash(dt);
     }
+
+    updateHitEffect(dt) {
+  if (this.state.hitEffect.active) {
+    this.state.hitEffect.blinkTimer += dt;
+    
+    if (this.state.hitEffect.blinkTimer >= this.state.hitEffect.blinkDuration) {
+      this.state.hitEffect.blinkTimer = 0;
+      this.state.hitEffect.blinkCount++;
+      
+      if (this.state.hitEffect.blinkCount >= 4) { // 2 complete blinks (on-off-on-off)
+        this.state.hitEffect.active = false;
+        this.state.hitEffect.blinkCount = 0;
+      }
+    }
+  }
+}
+
+updateScreenFlash(dt) {
+  if (this.state.screenFlash.active) {
+    this.state.screenFlash.timer += dt;
+    
+    // Fade out the flash effect
+    const progress = this.state.screenFlash.timer / this.state.screenFlash.duration;
+    this.state.screenFlash.intensity = Math.max(0, 1 - progress);
+    
+    if (this.state.screenFlash.timer >= this.state.screenFlash.duration) {
+      this.state.screenFlash.active = false;
+      this.state.screenFlash.intensity = 0;
+    }
+  }
+}
 
     handlePointCollection() {
       const eatRadius = 18 * (1 + 0.15 * this.audio.beatPulse);
@@ -230,7 +274,8 @@
       this.renderer.drawPlayerTrail(this.state.trail);
       this.renderer.drawShockwave(this.state.shockwave);
       this.renderer.drawParticles(this.particles.particles);
-      
+      this.renderer.drawScreenFlash(W, H);
+
       if (this.state.debug) {
         this.renderer.drawDebug(this.state.trail);
       }
@@ -377,17 +422,29 @@ updateShockwave(dt) {
       this.scrollSpeed = 120;
       this.bgTime = 0;
       this.mouse = { x: 0, y: 0 };
-      this.shockwave = {
-      charging: false,
-      chargeTime: 0,
-      maxChargeTime: 2.0,
-      radius: 0,
-      active: false,
-      x: 0,
-      y: 0,
-      duration: 0.5,
-      activeTime: 0
-    };
+  this.shockwave = {
+  charging: false,
+  chargeTime: 0,
+  maxChargeTime: 2.0,
+  radius: 0,
+  active: false,
+  x: 0,
+  y: 0,
+  duration: 0.5,
+  activeTime: 0
+};
+  this.hitEffect = {
+  active: false,
+  blinkCount: 0,
+  blinkTimer: 0,
+  blinkDuration: 0.2 // Duration of each blink
+};
+this.screenFlash = {
+  active: false,
+  intensity: 0,
+  duration: 0.5,
+  timer: 0
+};
     }
   }
 
@@ -978,11 +1035,33 @@ updateShockwave(dt) {
       }
     }
 
+    drawScreenFlash(width, height) {
+  if (this.state.screenFlash.active && this.state.screenFlash.intensity > 0) {
+    const borderWidth = 20;
+    const alpha = this.state.screenFlash.intensity * 0.6;
+    
+    this.ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+    
+    // Draw red borders on all edges
+    this.ctx.fillRect(0, 0, width, borderWidth); // Top
+    this.ctx.fillRect(0, height - borderWidth, width, borderWidth); // Bottom
+    this.ctx.fillRect(0, 0, borderWidth, height); // Left
+    this.ctx.fillRect(width - borderWidth, 0, borderWidth, height); // Right
+  }
+}
+
     drawPlayerTrail(trail) {
       if (trail.length < 2) return;
       
       const widthBase = 18;
-      const hue = 275;
+      let hue = 275;
+
+        // Check if we should show red blinking effect
+  const shouldShowRed = this.state.hitEffect.active && 
+                       (this.state.hitEffect.blinkCount % 2 === 1);
+  if (shouldShowRed) {
+    hue = 0; // Red hue
+  }
       
       this.ctx.lineJoin = "round";
       this.ctx.lineCap = "round";
