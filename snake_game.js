@@ -12,6 +12,7 @@
       this.renderer = new GameRenderer(this.ctx, this.state);
       this.input = new InputHandler(this.canvas);
       this.audio = new AudioManager();
+      this.audio.start();
       this.network = new NetworkManager(this.playerId, this.playerName);
       this.ui = new UIManager();
       this.physics = new Physics();
@@ -65,7 +66,12 @@
       };
 
       this.input.onPointerDown = () => {
-        if (!this.audio.isRunning) this.audio.start();
+        if (this.state.isDead) return;
+
+        if (this.audio.ctx && this.audio.ctx.state === 'suspended') {
+          this.audio.ctx.resume();
+        }
+        //if (!this.audio.isRunning) this.audio.start();
 
         this.startShockwaveCharge();
       };
@@ -149,6 +155,12 @@
     const reduction = Math.floor(this.state.maxTrail * 0.5); 
     this.state.maxTrail = Math.max(20, this.state.maxTrail - reduction);
     this.state.trail = this.state.trail.slice(-this.state.maxTrail);
+
+       // Check if player should die
+    if (this.state.maxTrail < 100) {
+      this.triggerDeath();
+      return;
+    }
     
     // Visual feedback
     this.particles.burst(this.state.head.x, this.state.head.y, 25); // Red particles
@@ -173,7 +185,23 @@
       this.particles.shockwaveBurst(msg.x, msg.y, msg.radius);
 }
 
+triggerDeath() {
+  this.state.isDead = true;
+  this.state.deathTimer = 0;
+  this.state.totalLifetimeScore += this.state.score;
+  
+  // Activate death screen flash (different from hit flash)
+  this.state.screenFlash.active = true;
+  this.state.screenFlash.intensity = 1.0;
+  this.state.screenFlash.timer = 0;
+  this.state.screenFlash.duration = this.state.deathDuration; // Longer duration for death
+}
+
     update(dt) {
+      if (this.state.isDead) {
+        this.updateDeath(dt);
+        return;
+      }
       this.state.bgTime += dt;
       this.audio.update();
       
@@ -186,6 +214,44 @@
       this.updateHitEffect(dt);
       this.updateScreenFlash(dt);
     }
+
+    updateDeath(dt) {
+      this.state.deathTimer += dt;
+      this.updateScreenFlash(dt); // Keep the screen flash going
+  
+     if (this.state.deathTimer >= this.state.deathDuration) {
+        this.respawn();
+  }
+}
+
+respawn() {
+  const W = this.canvas.clientWidth;
+  const H = this.canvas.clientHeight;
+  
+  // Reset position and trail
+  this.state.head.x = W * 0.5;
+  this.state.head.y = this.state.cameraY + H * 0.5;
+  this.state.head.vx = 0;
+  this.state.head.vy = 0;
+  this.state.trail.length = 0;
+  this.state.maxTrail = 60; // Starting length
+  
+  // Set score to half of total lifetime score
+  this.state.score = Math.floor(this.state.totalLifetimeScore * 0.5);
+  
+  // Reset death state
+  this.state.isDead = false;
+  this.state.deathTimer = 0;
+  
+  // Reset effects
+  this.state.screenFlash.active = false;
+  this.state.screenFlash.intensity = 0;
+  this.state.hitEffect.active = false;
+  
+  // Update UI
+  this.ui.updateScore(this.state.score);
+  this.ui.updateLength(this.state.maxTrail);
+}
 
     updateHitEffect(dt) {
   if (this.state.hitEffect.active) {
@@ -449,6 +515,10 @@ this.screenFlash = {
   duration: 0.5,
   timer: 0
 };
+  this.isDead = false;
+  this.deathTimer = 0;
+  this.deathDuration = 3.0; 
+  this.totalLifetimeScore = 0; // Track total score across deaths
     }
   }
 
@@ -659,8 +729,12 @@ this.screenFlash = {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.isRunning = true;
         this.nextTime = this.ctx.currentTime + 0.05;
+
+        this.startBeeatPulse();//starts pulse to activate vfx
       } catch (e) {
         console.warn('Audio not supported:', e);
+
+        this.startBeatPulse(); // starts pulse without audio
       }
     }
 
@@ -674,6 +748,15 @@ this.screenFlash = {
         console.warn('Error stopping audio:', e);
       }
     }
+
+    startBeatPulse() {
+       if (this.beatPulseInterval) return;
+          const interval = (60 / this.bpm) * 1000; // Convert to milliseconds
+          this.beatPulseInterval = setInterval(() => {
+          this.beatPulse = 1;
+         this.beatIndex++;
+  }, interval);
+}
 
     toggle() {
       this.isRunning ? this.stop() : this.start();
@@ -1042,9 +1125,10 @@ this.screenFlash = {
     drawScreenFlash(width, height) {
   if (this.state.screenFlash.active && this.state.screenFlash.intensity > 0) {
     const borderWidth = 20;
+    const color = this.state.isDead ? '255, 255, 255' : '255, 0, 0'; // White for death, red for hit
     const alpha = this.state.screenFlash.intensity * 0.6;
     
-    this.ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+    this.ctx.fillStyle = `rgba(${color}, ${alpha})`;
     
     // Draw red borders on all edges
     this.ctx.fillRect(0, 0, width, borderWidth); // Top
