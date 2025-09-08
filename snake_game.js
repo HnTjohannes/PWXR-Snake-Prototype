@@ -189,6 +189,8 @@ triggerDeath() {
   this.state.isDead = true;
   this.state.deathTimer = 0;
   this.state.totalLifetimeScore += this.state.score;
+
+  this.state.trail.length = 0;
   
   // Activate death screen flash (different from hit flash)
   this.state.screenFlash.active = true;
@@ -341,10 +343,16 @@ updateScreenFlash(dt) {
       this.renderer.drawPoints(this.state.points, this.audio.beatPulse);
       this.renderer.drawOtherPlayers(this.otherPlayers, this.playerId);
       this.renderer.drawStatics(this.state.statics, this.audio.beatPulse);
+       if (!this.state.isDead) {
       this.renderer.drawPlayerTrail(this.state.trail);
       this.renderer.drawShockwave(this.state.shockwave);
+       }
       this.renderer.drawParticles(this.particles.particles);
       this.renderer.drawScreenFlash(W, H);
+
+      if (this.state.isDead) {
+    this.renderer.drawRespawnTimer(W, H, this.state.deathTimer, this.state.deathDuration);
+  }
 
       if (this.state.debug) {
         this.renderer.drawDebug(this.state.trail);
@@ -1090,6 +1098,45 @@ this.screenFlash = {
       }
     }
 
+    drawRespawnTimer(width, height, currentTime, totalTime) {
+  const timeLeft = totalTime - currentTime;
+  const seconds = Math.ceil(timeLeft);
+  
+  if (seconds <= 0) return;
+  
+  const centerX = width * 0.5;
+  const centerY = height * 0.5;
+  
+  // Semi-transparent background circle
+  this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  this.ctx.beginPath();
+  this.ctx.arc(centerX, centerY, 80, 0, Math.PI * 2);
+  this.ctx.fill();
+  
+  // Progress circle
+  const progress = (totalTime - timeLeft) / totalTime;
+  const startAngle = -Math.PI * 0.5; // Start at top
+  const endAngle = startAngle + (progress * Math.PI * 2);
+  
+  this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  this.ctx.lineWidth = 6;
+  this.ctx.beginPath();
+  this.ctx.arc(centerX, centerY, 70, startAngle, endAngle);
+  this.ctx.stroke();
+  
+  // Timer text
+  this.ctx.fillStyle = 'white';
+  this.ctx.font = 'bold 36px ui-sans-serif';
+  this.ctx.textAlign = 'center';
+  this.ctx.textBaseline = 'middle';
+  this.ctx.fillText(seconds.toString(), centerX, centerY - 5);
+  
+  // "RESPAWNING" text
+  this.ctx.font = '14px ui-sans-serif';
+  this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  this.ctx.fillText('RESPAWNING', centerX, centerY + 25);
+}
+
     drawStatics(statics, beatPulse) {
       const height = this.ctx.canvas.clientHeight;
       
@@ -1125,7 +1172,7 @@ this.screenFlash = {
     drawScreenFlash(width, height) {
   if (this.state.screenFlash.active && this.state.screenFlash.intensity > 0) {
     const borderWidth = 20;
-    const color = this.state.isDead ? '255, 255, 255' : '255, 0, 0'; // White for death, red for hit
+    const color = this.state.isDead ? '255, 0, 0' : '255, 0, 0'; // White for death, red for hit
     const alpha = this.state.screenFlash.intensity * 0.6;
     
     this.ctx.fillStyle = `rgba(${color}, ${alpha})`;
