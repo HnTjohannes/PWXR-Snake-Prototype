@@ -94,6 +94,7 @@ wss.on('connection', (ws) => {
         players[playerId] = { 
           id: playerId,
           score: 0,
+          staticsCaptured: 0,
           name: msg.name || "Player" + playerId.toString().slice(-4),
           x: msg.x || 400,
           y: gameState.cameraY + 300,
@@ -118,6 +119,29 @@ wss.on('connection', (ws) => {
           players[playerId].lastUpdate = Date.now();
         }
       }
+
+      if (msg.type === 'spawnStaticsOnDeath') {
+  const W = 1200;
+  for (let i = 0; i < msg.count; i++) {
+    const angle = (i / msg.count) * Math.PI * 2;
+    const distance = 50 + Math.random() * 100;
+    const x = Math.max(50, Math.min(W - 50, msg.x + Math.cos(angle) * distance));
+    const y = msg.y + Math.sin(angle) * distance;
+    
+    gameState.statics.push({
+      id: gameState.seedCounter++,
+      seed: Math.floor(Math.random() * 1e9),
+      x: x,
+      y: y,
+      r: 16,
+      captured: false
+    });
+  }
+  
+  if (playerId && players[playerId]) {
+    players[playerId].staticsCaptured = 0;
+  }
+}
 
       if (msg.type === 'collectPoint') {
         const pointIndex = gameState.points.findIndex(p => p.id === msg.pointId);
@@ -146,6 +170,7 @@ wss.on('connection', (ws) => {
             staticObj.captured = true;
             if (playerId && players[playerId]) {
               players[playerId].score += 5;
+              players[playerId].staticsCaptured += 1;
             }
           }
         }
@@ -201,7 +226,7 @@ setInterval(() => {
       delete players[id];
       continue;
     }
-    
+
     if (now - players[id].lastUpdate > 100) { // 100ms threshold
     players[id].y = gameState.cameraY + 300; // Keep them at relative screen position
   }

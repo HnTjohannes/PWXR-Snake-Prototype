@@ -189,8 +189,18 @@ triggerDeath() {
   this.state.isDead = true;
   this.state.deathTimer = 0;
   this.state.totalLifetimeScore += this.state.score;
+  this.state.staticsCaptured = 0;
 
   this.state.trail.length = 0;
+
+    if (this.state.staticsCaptured > 0) {
+    const spawnData = {
+      x: this.state.head.x,
+      y: this.state.head.y,
+      count: this.state.staticsCaptured
+    };
+    this.network.spawnStaticsOnDeath(spawnData);
+  }
   
   // Activate death screen flash (different from hit flash)
   this.state.screenFlash.active = true;
@@ -240,6 +250,7 @@ respawn() {
   
   // Set score to half of total lifetime score
   this.state.score = Math.floor(this.state.totalLifetimeScore * 0.5);
+  this.state.staticsCaptured = 0;
   
   // Reset death state
   this.state.isDead = false;
@@ -318,8 +329,10 @@ updateScreenFlash(dt) {
         if (staticObj.captured) continue;
         
         if (this.physics.isStaticCaptured(staticObj, loopData.loopPoints)) {
+
           staticObj.captured = true;
           this.state.score += 5;
+          this.state.staticsCaptured += 1;
           capturedStatics.push(staticObj.id);
           this.particles.burst(staticObj.x, staticObj.y, 120);
 
@@ -330,7 +343,7 @@ updateScreenFlash(dt) {
       if (capturedStatics.length > 0) {
         this.ui.updateScore(this.state.score);
         this.ui.updateLength(this.state.maxTrail);
-        this.network.captureStatics(capturedStatics);
+        this.network.captureStatics(capturedStatics, this.state.capturedStatics);
       }
     }
 
@@ -370,6 +383,7 @@ updateScreenFlash(dt) {
       this.state.trail.length = 0;
       this.state.maxTrail = 60;
       this.state.score = 0;
+      this,this.state.staticsCaptured = 0;
       this.state.bgTime = 0;
 
       this.state.shockwave.charging = false;
@@ -494,6 +508,7 @@ updateShockwave(dt) {
       this.trail = [];
       this.maxTrail = 60;
       this.score = 0;
+      this.staticsCaptured = 0;
       this.debug = false;
       this.slowmo = false;
       this.cameraY = 0;
@@ -606,10 +621,11 @@ this.screenFlash = {
       });
     }
 
-    captureStatics(staticIds) {
+    captureStatics(staticIds,staticsCaptured) {
       this.send({
         type: "captureStatic",
-        staticIds: staticIds
+        staticIds: staticIds,
+        staticsCaptured: staticsCaptured || 0
       });
     }
 
@@ -854,7 +870,7 @@ this.screenFlash = {
         const player = otherPlayers[id];
         if (player) {
           const div = document.createElement("div");
-          div.textContent = `${player.name || 'Player'}: ${player.score || 0}`;
+          div.textContent = `${player.name || 'Player'}: ${player.score || 0}(Statics: ${player.staticsCaptured || 0})`;
           div.style.color = "#94a3b8";
           div.style.marginBottom = "2px";
           this.multiHUD.appendChild(div);
@@ -1265,6 +1281,12 @@ this.screenFlash = {
       this.ctx.beginPath();
       this.ctx.arc(head.x, headScreenY, 6.5, 0, Math.PI * 2);
       this.ctx.fill();
+
+      this.ctx.fillStyle = "#000000";
+      this.ctx.font = "bold 12px ui-sans-serif";
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(this.state.staticsCaptured.toString(), head.x, headScreenY);
     }
 
     drawOtherPlayers(otherPlayers, currentPlayerId) {
