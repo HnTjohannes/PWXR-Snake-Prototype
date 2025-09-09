@@ -51,6 +51,36 @@ function initializeGame() {
   for (let i = 0; i < 5; i++) gameState.statics.push(spawnStatic(W, gameState.cameraY - H, gameState.cameraY + H * 2));
 }
 
+function checkGameOver() {
+  for (const playerId in players) {
+    const player = players[playerId];
+    if (player && player.staticsCaptured >= 10) {
+      broadcast({
+        type: 'gameOver',
+        winner: {
+          id: playerId,
+          name: player.name,
+          score: player.score
+        }
+      });
+      
+      // Reset all players after 6 seconds
+      setTimeout(() => {
+        for (const id in players) {
+          if (players[id]) {
+            players[id].score = 0;
+            players[id].staticsCaptured = 0;
+          }
+        }
+        initializeGame();
+      }, 5000);
+      
+      return true;
+    }
+  }
+  return false;
+}
+
 
 
 initializeGame();
@@ -179,6 +209,8 @@ wss.on('connection', (ws) => {
           staticIds: msg.staticIds,
           playerId: playerId 
         });
+
+        checkGameOver();
       }
 
      if (msg.type === 'shockwave') {
@@ -194,6 +226,41 @@ wss.on('connection', (ws) => {
       }));
     }
   });
+}
+
+if (msg.type === 'playerRespawned') {
+  if (playerId && players[playerId]) {
+    players[playerId].isDead = false;
+  }
+}
+
+if (msg.type === 'spawnStaticsOnDeath') {
+  const W = 1200;
+  for (let i = 0; i < msg.count; i++) {
+    const angle = (i / msg.count) * Math.PI * 2;
+    const distance = 50 + Math.random() * 100;
+    const x = Math.max(50, Math.min(W - 50, msg.x + Math.cos(angle) * distance));
+    const y = msg.y + Math.sin(angle) * distance;
+    
+    gameState.statics.push({
+      id: gameState.seedCounter++,
+      seed: Math.floor(Math.random() * 1e9),
+      x: x,
+      y: y,
+      r: 16,
+      captured: false
+    });
+  }
+  
+  if (playerId && players[playerId]) {
+    players[playerId].staticsCaptured = 0;
+  }
+}
+
+if (msg.type === 'playerDied') {
+  if (playerId && players[playerId]) {
+    players[playerId].isDead = true;
+  }
 }
       
     } catch (err) { console.error('Message parse error:', err); }
@@ -227,8 +294,8 @@ setInterval(() => {
       continue;
     }
 
-    if (now - players[id].lastUpdate > 100) { // 100ms threshold
-    players[id].y = gameState.cameraY + 300; // Keep them at relative screen position
+   if (now - players[id].lastUpdate > 100) { // 100ms threshold
+    players[id].y -= gameState.scrollSpeed * dt//gameState.cameraY + 300; // Keep them at relative screen position
   }
 }
 

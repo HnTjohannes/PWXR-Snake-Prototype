@@ -2,7 +2,7 @@
   class SnakeGame {
     constructor() {
       this.playerId = 'player_' + Math.random().toString(36).substr(2, 9);
-      this.playerName = "Player" + this.playerId.slice(-4);
+      this.playerName = "";
       
       this.canvas = document.getElementById("game");
       this.ctx = this.canvas.getContext("2d");
@@ -27,10 +27,33 @@
     init() {
       this.setupCanvas();
       this.setupEventListeners();
-      this.network.connect();
-      this.reset();
+     // this.network.connect();
+     // this.reset();
+      this.setupNameInput();
       this.startGameLoop();
     }
+
+    setupNameInput() {
+  const nameInput = document.getElementById('playerNameInput');
+  const startBtn = document.getElementById('startGameBtn');
+  const container = document.getElementById('nameInputContainer');
+  
+  startBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim() || `Player${this.playerId.slice(-4)}`;
+    this.playerName = name;
+    container.style.display = 'none';
+    this.gameStarted = true;
+    this.network.connect();
+    this.reset();
+    this.startGameLoop();
+  });
+  
+  nameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      startBtn.click();
+    }
+  });
+}
 
     setupCanvas() {
     const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -106,6 +129,12 @@
           this.otherPlayers = filteredPlayers;
           break;
 
+        case "playerJoined":
+          if (msg.player && msg.player.id !== this.playerId) {
+            this.otherPlayers[msg.player.id] = msg.player;
+          }
+          break;
+
         case "pointCollected":
           this.handlePointCollected(msg);
           break;
@@ -114,12 +143,56 @@
         case "staticscaptured":
           this.handleStaticsCaptured(msg);
           break;
+
         case "shockwave":
           this.handleShockwaveReceived(msg);
           this.handleOtherPlayerShockwave(msg);
           break;
+
+        case "gameOver":
+          this.gameOver = true;
+          this.winner = msg.winner;
+          this.gameOverTimer = 0;
+          this.showGameOverScreen();
+          break;
       }
     }
+
+    showGameOverScreen() {
+  const overlay = document.createElement('div');
+  overlay.className = 'game-over-overlay';
+  overlay.innerHTML = `
+    <div class="winner-text">${this.winner.name} has won!</div>
+    <div class="countdown-text" id="countdownText">Restarting in 5 seconds...</div>
+  `;
+  document.body.appendChild(overlay);
+  
+  let countdown = 5;
+  const countdownInterval = setInterval(() => {
+    countdown--;
+    const countdownEl = document.getElementById('countdownText');
+    if (countdownEl) {
+      countdownEl.textContent = countdown > 0 ? `Restarting in ${countdown} seconds...` : 'Restarting...';
+    }
+    
+    if (countdown <= 0) {
+      clearInterval(countdownInterval);
+      overlay.remove();
+      this.resetGame();
+    }
+  }, 1000);
+}
+
+resetGame() {
+  this.gameOver = false;
+  this.winner = null;
+  this.gameOverTimer = 0;
+  this.reset();
+  
+  // Show name input again
+  document.getElementById('nameInputContainer').style.display = 'flex';
+  this.gameStarted = false;
+}
 
     handlePointCollected(msg) {
       const pointIndex = this.state.points.findIndex(p => p.id === msg.pointId);
@@ -186,6 +259,7 @@
 }
 
 triggerDeath() {
+  this.network.send({ type: 'playerDied' });
   this.state.isDead = true;
   this.state.deathTimer = 0;
   this.state.totalLifetimeScore += this.state.score;
@@ -210,6 +284,7 @@ triggerDeath() {
 }
 
     update(dt) {
+      if (!this.gameStarted || this.gameOver) return;
       if (this.state.isDead) {
         this.updateDeath(dt);
         return;
@@ -264,6 +339,8 @@ respawn() {
   // Update UI
   this.ui.updateScore(this.state.score);
   this.ui.updateLength(this.state.maxTrail);
+
+  this.network.send({ type: 'playerRespawned' });
 }
 
     updateHitEffect(dt) {
@@ -348,6 +425,7 @@ updateScreenFlash(dt) {
     }
 
     render() {
+      if (!this.gameStarted) return;
       const W = this.canvas.clientWidth;
       const H = this.canvas.clientHeight;
       
@@ -621,11 +699,20 @@ this.screenFlash = {
       });
     }
 
+    spawnStaticsOnDeath(spawnData) {
+  this.send({
+    type: "spawnStaticsOnDeath",
+    x: spawnData.x,
+    y: spawnData.y,
+    count: spawnData.count
+  });
+}
+
     captureStatics(staticIds,staticsCaptured) {
       this.send({
         type: "captureStatic",
         staticIds: staticIds,
-        staticsCaptured: staticsCaptured || 0
+        staticsCaptured: staticsCaptured 
       });
     }
 
@@ -656,7 +743,7 @@ this.screenFlash = {
       window.addEventListener("mousemove", (e) => this.handleMouseMove(e));
       window.addEventListener("touchmove", (e) => this.handleTouchMove(e), { passive: false });
       window.addEventListener("keydown", (e) => this.onKeyDown?.(e.key));
-      window.addEventListener("pointerdown", () => this.onPointerDown?.(), { once: true });
+      window.addEventListener("pointerdown", () => this.onPointerDown?.());
       window.addEventListener("mousedown", (e) => this.handleMouseDown(e));
       window.addEventListener("mouseup", (e) => this.handleMouseUp(e));
 
@@ -1092,7 +1179,7 @@ this.screenFlash = {
         const screenY = point.y - this.state.cameraY;
         if (screenY < -60 || screenY > height + 60) continue;
         
-        const pulseFactor = 1 + beatPulse * (this.randBeat(point.seed || 0) * 3.0);
+        const pulseFactor = 1 //+ beatPulse * (this.randBeat(point.seed || 0) * 3.0);
         const radius = point.r || 8;
         const glowRadius = radius * 2.2 * pulseFactor;
         const coreRadius = radius * pulseFactor;
@@ -1163,7 +1250,7 @@ this.screenFlash = {
         const screenY = staticObj.y - this.state.cameraY;
         if (screenY < -50 || screenY > height + 50) continue;
         
-        const pulseFactor = 1 + beatPulse * (this.randBeat(staticObj.seed || 0) * 3.0);
+        const pulseFactor = 1 //+ beatPulse * (this.randBeat(staticObj.seed || 0) * 3.0);
         const radius = (staticObj.r || 16) * pulseFactor;
         
         if (staticObj.captured) {
@@ -1330,6 +1417,14 @@ this.screenFlash = {
         this.ctx.beginPath();
         this.ctx.arc(player.x, screenY, radius * 0.4, 0, Math.PI * 2);
         this.ctx.fill();
+
+        // Statics captured count
+        this.ctx.fillStyle = "#000000";
+        this.ctx.font = "bold 10px ui-sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText((player.staticsCaptured || 0).toString(), player.x, screenY);
+
         
         // Player name and score
         this.ctx.fillStyle = "white";
@@ -1340,7 +1435,7 @@ this.screenFlash = {
         
         this.ctx.textBaseline = "top";
         this.ctx.fillStyle = "#94a3b8";
-        this.ctx.fillText(`${player.score || 0}`, player.x, screenY + radius + 8);
+        //this.ctx.fillText(`${player.score || 0}`, player.x, screenY + radius + 8);
       }
     }
 
