@@ -78,7 +78,7 @@ app.get('/health', (req, res) => {
 });
 
 // --- WebSocket server ---
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({server});
 console.log('WebSocket server attached to HTTP server');
 
 // --- Connection handler ---
@@ -193,9 +193,15 @@ setInterval(() => {
   // Update camera scrolling
   gameState.cameraY -= gameState.scrollSpeed * dt;
 
-  for (const id in players) {
-    if (now - players[id].lastUpdate > 30000) delete players[id];
-
+    for (const id in players) {
+    const player = players[id];
+    if (!player) continue;
+    
+    if (now - player.lastUpdate > 30000) {
+      delete players[id];
+      continue;
+    }
+    
     if (now - players[id].lastUpdate > 100) { // 100ms threshold
     players[id].y = gameState.cameraY + 300; // Keep them at relative screen position
   }

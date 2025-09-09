@@ -71,7 +71,7 @@
         if (this.audio.ctx && this.audio.ctx.state === 'suspended') {
           this.audio.ctx.resume();
         }
-        //if (!this.audio.isRunning) this.audio.start();
+        if (!this.audio.isRunning) this.audio.start();
 
         this.startShockwaveCharge();
       };
@@ -542,7 +542,8 @@ this.screenFlash = {
     }
 
     connect() {
-      this.ws = new WebSocket(`wss://${window.location.host}`);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.ws = new WebSocket(`${protocol}//${window.location.host}`);
       
       this.ws.onopen = () => {
         this.isConnected = true;
@@ -738,7 +739,7 @@ this.screenFlash = {
         this.isRunning = true;
         this.nextTime = this.ctx.currentTime + 0.05;
 
-        this.startBeeatPulse();//starts pulse to activate vfx
+        this.startBeatPulse();//starts pulse to activate vfx
       } catch (e) {
         console.warn('Audio not supported:', e);
 
