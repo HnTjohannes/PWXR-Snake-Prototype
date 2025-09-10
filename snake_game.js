@@ -58,7 +58,7 @@
     const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
    // Use lower DPR for mobile and limit canvas size
       if (isMobile) {
-        this.DPR = 0.5; // Lower quality for performance
+        this.DPR = 0.85; // Lower quality for performance
         // Set a fixed aspect ratio for mobile
         //this.canvas.style.maxWidth = '100vw';
        // this.canvas.style.maxHeight = '60vh'; // Limit height on mobile
@@ -120,6 +120,7 @@
         case "fullGameState":
           this.state.points = msg.gameState.points || [];
           this.state.statics = msg.gameState.statics || [];
+          this.state.warps = msg.gameState.warps || [];
           this.state.cameraY = msg.gameState.cameraY || 0;
           this.state.head.y = this.state.cameraY + 300;
           this.otherPlayers = { ...msg.players };
@@ -129,6 +130,7 @@
         case "gameStateUpdate":
           this.state.points = msg.gameState.points || [];
           this.state.statics = msg.gameState.statics || [];
+          this.state.warps = msg.gameState.warps || [];
           this.state.cameraY = msg.gameState.cameraY || 0;
           const filteredPlayers = { ...msg.players };
           delete filteredPlayers[this.playerId];
@@ -140,6 +142,14 @@
             this.otherPlayers[msg.player.id] = msg.player;
           }
           break;
+
+          case "warpSpawned":
+            this.state.warps.push(msg.warp);
+            break;
+
+          case "warpClaimed":
+            this.handleWarpClaimed(msg);
+            break;
 
         case "pointCollected":
           this.handlePointCollected(msg);
@@ -198,6 +208,46 @@ resetGame() {
   // Show name input again
   document.getElementById('nameInputContainer').style.display = 'flex';
   this.gameStarted = false;
+}
+
+handleWarpClaimed(msg) {
+  // Remove the warp
+  this.state.warps = this.state.warps.filter(w => w.id !== msg.warpId);
+  
+  if (msg.playerId === this.playerId) {
+    // We claimed it - teleport and change background
+    this.state.head.x = msg.newX;
+    this.state.head.y = msg.newY;
+    this.state.trail = []; // Clear trail on teleport
+    this.state.staticsCaptured -= msg.cost;
+    
+    // Change background color
+    this.state.backgroundHue = Math.random() * 360;
+    
+    // Visual feedback
+    this.particles.burst(msg.newX, msg.newY - this.state.cameraY, 120);
+    this.ui.updateScore(this.state.score);
+  }
+}
+
+handleWarpCapture() {
+  if (this.state.trail.length <= 25) return;
+  
+  const loopData = this.physics.detectLoop(this.state.trail);
+  if (!loopData) return;
+  
+  for (const warp of this.state.warps) {
+    if (warp.claimed) continue;
+    
+    if (this.physics.isStaticCaptured(warp, loopData.loopPoints)) {
+      if (this.state.staticsCaptured >= warp.cost) {
+        this.network.send({
+          type: 'claimWarp',
+          warpId: warp.id
+        });
+      }
+    }
+  }
 }
 
     handlePointCollected(msg) {
@@ -309,7 +359,7 @@ triggerDeath() {
       this.physics.updateTrail(this.state);
       this.handlePointCollection();
       this.handleStaticCapture();
-      
+      this.handleWarpCapture();
       this.updateShockwave(dt);
       this.updateHitEffect(dt);
       
@@ -447,6 +497,7 @@ updateScreenFlash(dt) {
       this.renderer.drawPoints(this.state.points, this.audio.beatPulse);
       this.renderer.drawOtherPlayers(this.otherPlayers, this.playerId);
       this.renderer.drawStatics(this.state.statics, this.audio.beatPulse);
+      this.renderer.drawWarps(this.state.warps, this.state.staticsCaptured, this.audio.beatPulse);
        if (!this.state.isDead) {
       this.renderer.drawPlayerTrail(this.state.trail);
       this.renderer.drawShockwave(this.state.shockwave);
@@ -474,7 +525,7 @@ updateScreenFlash(dt) {
       this.state.trail.length = 0;
       this.state.maxTrail = 60;
       this.state.score = 0;
-      this,this.state.staticsCaptured = 0;
+      this.state.staticsCaptured = 0;
       this.state.bgTime = 0;
 
       this.state.shockwave.charging = false;
@@ -633,6 +684,10 @@ this.screenFlash = {
   this.deathTimer = 0;
   this.deathDuration = 3.0; 
   this.totalLifetimeScore = 0; // Track total score across deaths
+  this.warps = [];
+  this.warpSpawnTimer = 0;
+  this.warpSpawnInterval = 30; 
+  this.backgroundHue = 220; 
     }
   }
 
@@ -1149,12 +1204,13 @@ this.screenFlash = {
 
     drawBackground(width, height) {
       // Radial gradient
+      const hue = this.state.backgroundHue;
       const grad = this.ctx.createRadialGradient(
         width * 0.5, height * 0.5, Math.min(width, height) * 0.2,
         width * 0.5, height * 0.5, Math.max(width, height) * 0.8
       );
-      grad.addColorStop(0, "rgba(30,41,59,0.35)");
-      grad.addColorStop(1, "rgba(2,6,12,0.0)");
+      grad.addColorStop(0, `hsla(${hue}, 30%, 15%, 0.75)`);
+      grad.addColorStop(1, `hsla(${hue}, 40%, 5%, 0.30)`);
       this.ctx.fillStyle = grad;
       this.ctx.fillRect(0, 0, width, height);
       
@@ -1182,6 +1238,49 @@ this.screenFlash = {
         this.ctx.stroke();
       }
     }
+
+    drawWarps(warps, staticsCaptured, beatPulse) {
+  const height = this.ctx.canvas.clientHeight;
+  
+  for (const warp of warps) {
+    if (!warp) continue;
+    
+    const screenY = warp.y - this.state.cameraY;
+    if (screenY < -60 || screenY > height + 60) continue;
+    
+    const radius = 20;
+    const canAfford = staticsCaptured >= warp.cost;
+    
+    // Pulsing green glow
+    const pulseSize = 1 + Math.sin(Date.now() * 0.003) * 0.2;
+    const glowRadius = radius * 2.5 * pulseSize;
+    
+    // Outer glow
+    const gradient = this.ctx.createRadialGradient(
+      warp.x, screenY, 0,
+      warp.x, screenY, glowRadius
+    );
+    gradient.addColorStop(0, canAfford ? 'rgba(0, 255, 0, 0.6)' : 'rgba(0, 255, 0, 0.3)');
+    gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(warp.x, screenY, glowRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+    
+    // Core
+    this.ctx.fillStyle = canAfford ? '#00ff00' : '#008800';
+    this.ctx.beginPath();
+    this.ctx.arc(warp.x, screenY, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+    
+    // Cost text
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = 'bold 14px ui-sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(warp.cost.toString(), warp.x, screenY);
+  }
+}
 
     drawPoints(points, beatPulse) {
       const height = this.ctx.canvas.clientHeight;

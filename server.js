@@ -51,6 +51,8 @@ function initializeGame() {
   gameState.lastSpawnY = 0;
   gameState.points = [];
   gameState.statics = [];
+  gameState.warps = [];
+  gameState.lastWarpSpawn = Date.now();
   for (let i = 0; i < 16; i++) gameState.points.push(spawnDot(W, gameState.cameraY - H, gameState.cameraY + H * 2));
   for (let i = 0; i < 5; i++) gameState.statics.push(spawnStatic(W, gameState.cameraY - H, gameState.cameraY + H * 2));
 }
@@ -85,6 +87,15 @@ function checkGameOver() {
   return false;
 }
 
+function spawnWarp(W = 1200) {
+  return {
+    id: gameState.seedCounter++,
+    x: 100 + Math.random() * (W - 200),
+    y: gameState.cameraY + Math.random() * 600 - 300,
+    cost: 2 + Math.floor(Math.random() * 3), // 2-4 statics cost
+    claimed: false
+  };
+}
 
 
 initializeGame();
@@ -266,6 +277,36 @@ if (msg.type === 'playerDied') {
     players[playerId].isDead = true;
   }
 }
+
+if (msg.type === 'claimWarp') {
+  const warp = gameState.warps.find(w => w.id === msg.warpId);
+  if (warp && !warp.claimed && players[playerId]) {
+    if (players[playerId].staticsCaptured >= warp.cost) {
+      // Deduct statics
+      players[playerId].staticsCaptured -= warp.cost;
+      warp.claimed = true;
+      
+      // Teleport player to random position
+      const W = 1200, H = 600;
+      const newX = 100 + Math.random() * (W - 200);
+      const newY = gameState.cameraY + Math.random() * H;
+      
+      broadcast({
+        type: 'warpClaimed',
+        warpId: msg.warpId,
+        playerId: playerId,
+        newX: newX,
+        newY: newY,
+        cost: warp.cost
+      });
+      
+      // Remove the warp after claiming
+      gameState.warps = gameState.warps.filter(w => w.id !== msg.warpId);
+    }
+  }
+}
+
+
       
     } catch (err) { console.error('Message parse error:', err); }
   });
@@ -288,6 +329,14 @@ setInterval(() => {
 
   // Update camera scrolling
   gameState.cameraY -= gameState.scrollSpeed * dt;
+
+  //warp spawning
+  if (Date.now() - gameState.lastWarpSpawn > 30000) {
+  const newWarp = spawnWarp();
+  gameState.warps.push(newWarp);
+  gameState.lastWarpSpawn = Date.now();
+  broadcast({ type: 'warpSpawned', warp: newWarp });
+}
 
   // Update point positions (falling motion)
 for (let point of gameState.points) {
@@ -335,6 +384,7 @@ gameState.points = gameState.points.filter(p => p.y > gameState.cameraY - 1000);
       gameState: { 
         points: gameState.points, 
         statics: gameState.statics, 
+        warps: gameState.warps,
         cameraY: gameState.cameraY 
       }, 
       players 
