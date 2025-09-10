@@ -22,21 +22,25 @@ function randRange(a, b) { return a + Math.random() * (b - a); }
 function spawnDot(W = 800, yMin, yMax) {
   const speed = 40 + Math.random() * 80;
   const ang = Math.random() * Math.PI * 2;
+  const xPosition = (Math.random() * 0.8 + 0.1) * W;
 
-const xPosition = (Math.random() * 0.8 + 0.1) * W;
+  const spawnY = yMin - 100;
 
   return { 
     id: gameState.seedCounter++, seed: Math.floor(Math.random() * 1e9), 
-    x: xPosition, y: randRange(yMin, yMax), 
-    vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed * 0.4, 
+    x: xPosition, y: randRange(yMin, spawnY), 
+    vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed + 20, 
     r: 6 + Math.random() * 5, hue: 200 + Math.random() * 120 
   };
 }
 
 function spawnStatic(W = 800, yMin, yMax) {
+
+const spawnY = yMin - 100;
+
   return { 
     id: gameState.seedCounter++, seed: Math.floor(Math.random() * 1e9), 
-    x: Math.random() * W, y: randRange(yMin, yMax), r: 16, captured: false 
+    x: Math.random() * W, y: randRange(yMin, spawnY), r: 16, captured: false 
   };
 }
 
@@ -284,6 +288,20 @@ setInterval(() => {
 
   // Update camera scrolling
   gameState.cameraY -= gameState.scrollSpeed * dt;
+
+  // Update point positions (falling motion)
+for (let point of gameState.points) {
+  point.y += point.vy * dt;
+  point.x += point.vx * dt;
+  
+  // Bounce off walls
+  if (point.x < 0 || point.x > 1200) {
+    point.vx *= -1;
+  }
+}
+
+// Remove points that are too far below
+gameState.points = gameState.points.filter(p => p.y > gameState.cameraY - 1000);
 
     for (const id in players) {
     const player = players[id];

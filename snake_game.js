@@ -27,8 +27,6 @@
     init() {
       this.setupCanvas();
       this.setupEventListeners();
-     // this.network.connect();
-     // this.reset();
       this.setupNameInput();
       this.startGameLoop();
     }
@@ -43,6 +41,7 @@
     this.playerName = name;
     container.style.display = 'none';
     this.gameStarted = true;
+    this.network.playerName = this.playerName;
     this.network.connect();
     this.reset();
     this.startGameLoop();
@@ -57,9 +56,16 @@
 
     setupCanvas() {
     const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-   this.DPR = isMobile ? 0.7 : Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  
-
+   // Use lower DPR for mobile and limit canvas size
+      if (isMobile) {
+        this.DPR = 0.5; // Lower quality for performance
+        // Set a fixed aspect ratio for mobile
+        //this.canvas.style.maxWidth = '100vw';
+       // this.canvas.style.maxHeight = '60vh'; // Limit height on mobile
+      } else {
+        this.DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      }
+      
       const ro = new ResizeObserver(() => this.resizeCanvas());
       ro.observe(this.canvas);
       this.resizeCanvas();
@@ -259,13 +265,6 @@ resetGame() {
 }
 
 triggerDeath() {
-  this.network.send({ type: 'playerDied' });
-  this.state.isDead = true;
-  this.state.deathTimer = 0;
-  this.state.totalLifetimeScore += this.state.score;
-  this.state.staticsCaptured = 0;
-
-  this.state.trail.length = 0;
 
     if (this.state.staticsCaptured > 0) {
     const spawnData = {
@@ -273,8 +272,16 @@ triggerDeath() {
       y: this.state.head.y,
       count: this.state.staticsCaptured
     };
+
     this.network.spawnStaticsOnDeath(spawnData);
   }
+
+    this.network.send({ type: 'playerDied' });
+  this.state.isDead = true;
+  this.state.deathTimer = 0;
+  this.state.totalLifetimeScore += this.state.score;
+  this.state.staticsCaptured = 0;
+  this.state.trail.length = 0;
   
   // Activate death screen flash (different from hit flash)
   this.state.screenFlash.active = true;
@@ -285,21 +292,27 @@ triggerDeath() {
 
     update(dt) {
       if (!this.gameStarted || this.gameOver) return;
+      
+      // Always updates regardless of death state
+      this.particles.update(dt);
+      this.updateScreenFlash(dt);
+      this.state.bgTime += dt;
+      this.audio.update();
+      
       if (this.state.isDead) {
         this.updateDeath(dt);
         return;
       }
-      this.state.bgTime += dt;
-      this.audio.update();
+     
       
       this.physics.updatePlayerMovement(this.state, this.canvas, dt);
       this.physics.updateTrail(this.state);
       this.handlePointCollection();
       this.handleStaticCapture();
-      this.particles.update(dt);
+      
       this.updateShockwave(dt);
       this.updateHitEffect(dt);
-      this.updateScreenFlash(dt);
+      
     }
 
     updateDeath(dt) {
@@ -1351,9 +1364,12 @@ this.screenFlash = {
       this.ctx.globalAlpha = 1;
       
       // Draw player head
-      const head = end;
+      const head = trail[trail.length - 1];
       const headScreenY = head.y - this.state.cameraY;
       
+        // Draw progress ring
+      this.drawProgressRing(head.x, headScreenY);
+
       // Head glow
       const headGlow = this.ctx.createRadialGradient(head.x, headScreenY, 0, head.x, headScreenY, 28);
       headGlow.addColorStop(0, "rgba(199, 210, 254, .9)");
@@ -1375,6 +1391,38 @@ this.screenFlash = {
       this.ctx.textBaseline = "middle";
       this.ctx.fillText(this.state.staticsCaptured.toString(), head.x, headScreenY);
     }
+
+    drawProgressRing(x, y) {
+  const radius = 22;
+  const progress = Math.min(1, this.state.staticsCaptured / 10); // 10 is win condition
+  const circumference = 2 * Math.PI * radius;
+  const dashLength = circumference / 20; // 20 segments
+  const solidLength = circumference * progress;
+  
+  this.ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)'; // Gold color
+  this.ctx.lineWidth = 3;
+  this.ctx.lineCap = 'round';
+  
+  // Draw dotted circle that becomes solid based on progress
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2 - Math.PI / 2;
+    const nextAngle = ((i + 1) / 20) * Math.PI * 2 - Math.PI / 2;
+    const segmentStart = i * dashLength;
+    
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, radius, angle, nextAngle);
+    
+    // Make solid if within progress, dotted if not
+    if (segmentStart < solidLength) {
+      this.ctx.stroke();
+    } else {
+      // Draw as dots
+      this.ctx.setLineDash([2, dashLength - 2]);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]); // Reset
+    }
+  }
+}
 
     drawOtherPlayers(otherPlayers, currentPlayerId) {
       const width = this.ctx.canvas.clientWidth;
