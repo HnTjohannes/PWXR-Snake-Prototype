@@ -45,6 +45,7 @@
     this.network.connect();
     this.reset();
     this.startGameLoop();
+    this.setupBackgroundButtons();
   });
   
   nameInput.addEventListener('keypress', (e) => {
@@ -77,6 +78,68 @@
       this.canvas.height = h * this.DPR;
       this.ctx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
     }
+
+    setupBackgroundButtons() {
+  const leftBtn = document.createElement('button');
+  leftBtn.className = 'bg-switch-btn left';
+  leftBtn.innerHTML = '◄';
+  leftBtn.addEventListener('click', () => this.switchBackground(-1));
+  
+  const rightBtn = document.createElement('button');
+  rightBtn.className = 'bg-switch-btn right';
+  rightBtn.innerHTML = '►';
+  rightBtn.addEventListener('click', () => this.switchBackground(1));
+  
+  const canvasWrap = document.querySelector('.canvas-wrap');
+  canvasWrap.appendChild(leftBtn);
+  canvasWrap.appendChild(rightBtn);
+}
+
+switchBackground(direction) {
+  if (this.state.swipeEffect.active) return;
+  
+  // Update background index
+  this.state.currentBgIndex = (this.state.currentBgIndex + direction + this.state.backgrounds.length) % this.state.backgrounds.length;
+  this.state.backgroundHue = this.state.backgrounds[this.state.currentBgIndex].hue;
+  
+  // Start swipe effect
+  this.state.swipeEffect.active = true;
+  this.state.swipeEffect.direction = direction;
+  this.state.swipeEffect.progress = 0;
+  
+  // Randomize positions of points and statics (client-side only)
+  this.randomizeObjectPositions();
+}
+
+randomizeObjectPositions() {
+  const W = this.canvas.clientWidth;
+  const H = this.canvas.clientHeight;
+  
+  // Randomize points
+  this.state.points.forEach(point => {
+    point.x = Math.random() * W;
+    point.y = this.state.cameraY + (Math.random() - 0.5) * H * 2;
+  });
+  
+  // Randomize statics
+  this.state.statics.forEach(staticObj => {
+    if (!staticObj.captured) {
+      staticObj.x = Math.random() * W;
+      staticObj.y = this.state.cameraY + (Math.random() - 0.5) * H * 2;
+    }
+  });
+}
+
+updateSwipeEffect(dt) {
+  if (!this.state.swipeEffect.active) return;
+  
+  this.state.swipeEffect.progress += dt / this.state.swipeEffect.duration;
+  
+  if (this.state.swipeEffect.progress >= 1) {
+    this.state.swipeEffect.active = false;
+    this.state.swipeEffect.progress = 0;
+  }
+}
 
     setupEventListeners() {
       this.input.onMove = (x, y) => {
@@ -346,6 +409,7 @@ triggerDeath() {
       // Always updates regardless of death state
       this.particles.update(dt);
       this.updateScreenFlash(dt);
+      this.updateSwipeEffect(dt);
       this.state.bgTime += dt;
       this.audio.update();
       
@@ -362,6 +426,7 @@ triggerDeath() {
       this.handleWarpCapture();
       this.updateShockwave(dt);
       this.updateHitEffect(dt);
+      
       
     }
 
@@ -504,6 +569,8 @@ updateScreenFlash(dt) {
        }
       this.renderer.drawParticles(this.particles.particles);
       this.renderer.drawScreenFlash(W, H);
+      this.renderer.drawSwipeEffect(W, H);
+      
 
       if (this.state.isDead) {
     this.renderer.drawRespawnTimer(W, H, this.state.deathTimer, this.state.deathDuration);
@@ -688,6 +755,22 @@ this.screenFlash = {
   this.warpSpawnTimer = 0;
   this.warpSpawnInterval = 30; 
   this.backgroundHue = 220; 
+  this.backgrounds = [
+    { hue: 220, name: 'Ocean' },    // Default blue
+    { hue: 120, name: 'Forest' },   // Green
+    { hue: 280, name: 'Mystic' },   // Purple
+    { hue: 30, name: 'Desert' }     // Orange
+  ];
+  this.currentBgIndex = 0;
+  this.backgroundHue = this.backgrounds[0].hue;
+  this.swipeEffect = {
+    active: false,
+    direction: 0, // -1 for left, 1 for right
+    progress: 0,
+    duration: 0.5
+  };
+
+
     }
   }
 
@@ -805,6 +888,7 @@ this.screenFlash = {
       this.onPointerUp = null;
       
       this.setupEventListeners();
+      
     }
 
     setupEventListeners() {
@@ -1238,6 +1322,49 @@ this.screenFlash = {
         this.ctx.stroke();
       }
     }
+    drawSwipeEffect(width, height) {
+  if (!this.state.swipeEffect.active) return;
+  
+  const progress = this.state.swipeEffect.progress;
+  const direction = this.state.swipeEffect.direction;
+  
+  // Easing function for smooth animation
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  const easedProgress = easeOutCubic(progress);
+  
+  // Calculate swipe position
+  const swipeWidth = width * 0.3;
+  const startX = direction > 0 ? -swipeWidth : width;
+  const endX = direction > 0 ? width : -swipeWidth;
+  const currentX = startX + (endX - startX) * easedProgress;
+  
+  // Draw swipe gradient
+  const gradient = this.ctx.createLinearGradient(
+    currentX, 0,
+    currentX + swipeWidth * direction, 0
+  );
+  
+  const alpha = 1 - easedProgress;
+  gradient.addColorStop(0, `rgba(255, 255, 255, 0)`);
+  gradient.addColorStop(0.5, `rgba(255, 255, 255, ${alpha * 0.3})`);
+  gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+  
+  this.ctx.fillStyle = gradient;
+  this.ctx.fillRect(currentX, 0, swipeWidth, height);
+  
+  // Add motion blur lines
+  for (let i = 0; i < 5; i++) {
+    const lineAlpha = (alpha * 0.2) * (1 - i / 5);
+    const lineX = currentX - (direction * i * 20);
+    
+    this.ctx.strokeStyle = `rgba(255, 255, 255, ${lineAlpha})`;
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(lineX, height * 0.2);
+    this.ctx.lineTo(lineX, height * 0.8);
+    this.ctx.stroke();
+  }
+}
 
     drawWarps(warps, staticsCaptured, beatPulse) {
   const height = this.ctx.canvas.clientHeight;
